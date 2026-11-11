@@ -116,40 +116,54 @@ public sealed class SideRail : Control
         g.DrawLine(edge, 12, BrandHeight, Width - 14, BrandHeight);
     }
 
-    /// <summary>The brand block of Opsis: a rounded logo (gradient, gloss, a still wave and a bright dot that runs along it, a halo that pulses), the title and the version.</summary>
+    /// <summary>The brand block in the style of the sidebar of Opsis: the icon of the app (a calendar that turns its page), the title and the version.</summary>
     private void DrawBrand(Graphics g, Opsis.UI.OpsisPalette p)
     {
-        var t = WaveClock.Time * 3.3;   // the same pace as the logo of Opsis
+        // the icon of the app (a calendar with a serif Chi) whose page turns over every few seconds: the sheet folds up on its hinge and shows the next one (the Chi, then the day of the month)
+        var seconds = WaveClock.Time / 0.4;
+        const double cycle = 4.0;
+        var index = (int)(seconds / cycle);
+        var u = seconds % cycle / cycle;
+        var flip = u > 0.82 ? Math.Clamp((u - 0.82) / 0.18, 0, 1) : 0;
+        flip = flip * flip * (3 - 2 * flip);   // eased
+        string Page(int i) => i % 2 == 0 ? "\u03A7" : DateTime.Today.Day.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
         var old = g.SmoothingMode;
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
         var state = g.Save();
         g.TranslateTransform(14, 16);
-        const float size = 56f;
-        var scale = size / 36f;
-        g.ScaleTransform(scale, scale);
-        var cyan = Color.FromArgb(0, 180, 216); var blue = Color.FromArgb(58, 110, 214);
-        using (var halo = new SolidBrush(Color.FromArgb((int)(25 + (Math.Sin(t) * 0.5 + 0.5) * 55), cyan))) g.FillEllipse(halo, -2, -2, 40, 40);
-        var rect = new Rectangle(2, 2, 32, 32);
-        using (var path = Rounded(rect, 8))
+        g.ScaleTransform(56f / 36f, 56f / 36f);
+        var navy = Color.FromArgb(24, 52, 94); var cyan = Color.FromArgb(0, 184, 212); var paper = Color.FromArgb(250, 252, 255);
+        using (var back = Rounded(new Rectangle(1, 1, 34, 34), 9)) using (var navyBrush = new SolidBrush(navy)) g.FillPath(navyBrush, back);
+        var bodyRect = new Rectangle(7, 8, 22, 22);
+        using (var body = Rounded(bodyRect, 4))
         {
-            using (var back = new System.Drawing.Drawing2D.LinearGradientBrush(rect, cyan, blue, 45f)) g.FillPath(back, path);
-            var oldClip = g.Clip;
-            g.SetClip(path, System.Drawing.Drawing2D.CombineMode.Intersect);
-            var gloss = new Rectangle(rect.X, rect.Y, rect.Width, rect.Height / 2 + 4);
-            using (var glossBrush = new System.Drawing.Drawing2D.LinearGradientBrush(gloss, Color.FromArgb(120, 255, 255, 255), Color.FromArgb(0, 255, 255, 255), 90f)) g.FillRectangle(glossBrush, gloss);
-            g.Clip = oldClip;
+            using (var paperBrush = new SolidBrush(paper)) g.FillPath(paperBrush, body);
+            var keep = g.Clip;
+            g.SetClip(body, System.Drawing.Drawing2D.CombineMode.Intersect);
+            // the page area: the next sheet is under the one that turns
+            var pageArea = new RectangleF(7, 14, 22, 16);
+            DrawPage(g, pageArea, Page(index + 1), navy, paper);
+            using (var shade = new SolidBrush(Color.FromArgb((int)(70 * (1 - flip)), 0, 0, 0))) if (flip > 0) g.FillRectangle(shade, pageArea);
+            var turning = g.Save();
+            g.TranslateTransform(0, 14);
+            g.ScaleTransform(1f, (float)Math.Max(0.001, 1 - flip));   // the sheet folds up towards its hinge
+            g.TranslateTransform(0, -14);
+            using (var paperBrush = new SolidBrush(paper)) g.FillRectangle(paperBrush, pageArea);
+            DrawPage(g, pageArea, Page(index), navy, paper);
+            if (flip > 0) using (var edge = new Pen(Color.FromArgb(90, navy), 0.6f)) g.DrawLine(edge, 7, 30, 29, 30);
+            g.Restore(turning);
+            using (var head = new SolidBrush(cyan)) g.FillRectangle(head, 7, 8, 22, 6);
+            g.Clip = keep;
         }
-        PointF p0 = new(8, 20), p1 = new(13, 13), p2 = new(21, 27), p3 = new(26, 20);
-        using (var wave = new Pen(Color.FromArgb(150, 255, 255, 255), 2.2f) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round })
-            g.DrawBezier(wave, p0, p1, p2, p3);
-        var u = (t * 0.22) % 1.0; var m = 1 - u;
-        var nx = (float)(m * m * m * p0.X + 3 * m * m * u * p1.X + 3 * m * u * u * p2.X + u * u * u * p3.X);
-        var ny = (float)(m * m * m * p0.Y + 3 * m * m * u * p1.Y + 3 * m * u * u * p2.Y + u * u * u * p3.Y);
-        using (var nodeHalo = new SolidBrush(Color.FromArgb(110, 255, 255, 255))) g.FillEllipse(nodeHalo, nx - 5, ny - 5, 10, 10);
-        g.FillEllipse(Brushes.White, nx - 2.3f, ny - 2.3f, 4.6f, 4.6f);
+        foreach (var rx in new[] { 12.5f, 23.5f })
+        {
+            using var ring = Rounded(new Rectangle((int)(rx - 1.5f), 5, 3, 7), 1);
+            using var ringBrush = new SolidBrush(Color.FromArgb(226, 232, 244)); g.FillPath(ringBrush, ring);
+            using var ringPen = new Pen(navy, 0.7f); g.DrawPath(ringPen, ring);
+        }
         g.Restore(state);
         g.SmoothingMode = old;
-
         const int x = 14 + 56 + 10;
         var width = Width - x - 8;
         using var titleFont = new Font("Segoe UI", 12.5f, FontStyle.Bold);
@@ -159,6 +173,14 @@ public sealed class SideRail : Control
         TextRenderer.DrawText(g, BrandVersion, smallFont, new Rectangle(x, 58, width, 16), p.TextMuted, TextFormatFlags.Left | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
     }
 
+    private static void DrawPage(Graphics g, RectangleF area, string text, Color ink, Color paper)
+    {
+        using var font = new Font("Times New Roman", text.Length > 1 ? 11f : 15f, FontStyle.Bold, GraphicsUnit.Pixel);
+        using var brush = new SolidBrush(ink);
+        var size = g.MeasureString(text, font);
+        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+        g.DrawString(text, font, brush, area.X + (area.Width - size.Width) / 2f + 0.3f, area.Y + (area.Height - size.Height) / 2f + 0.8f);
+    }
     private static System.Drawing.Drawing2D.GraphicsPath Rounded(Rectangle r, int radius)
     {
         var d = radius * 2;
