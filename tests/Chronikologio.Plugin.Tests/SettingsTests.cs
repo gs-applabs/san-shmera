@@ -1,4 +1,4 @@
-using Chronikologio.Core;
+﻿using Chronikologio.Core;
 using Chronikologio.UI;
 using Xunit;
 
@@ -56,7 +56,7 @@ public class SettingsTests : IDisposable
     }
 
     [Fact]
-    public void TheSettingsWindowChangesTheThemeLayoutAndLanguageAtOnceAndResets()
+    public void TheSettingsWindowChangesTheThemeAndLanguageAtOnceAndResets()
     {
         using var w = Open();
         using var dialog = new SettingsDialog(w);
@@ -66,8 +66,6 @@ public class SettingsTests : IDisposable
 
         dialog.Pick("theme", "light");
         Assert.Equal("light", ChronikologioTheme.Name);
-        dialog.Pick("layout", "tabs");
-        Assert.Equal("tabs", w.Layout);
         dialog.Pick("language", "en");
         Assert.Equal("en", Loc.Language);
         dialog.Pick("region", "cy");
@@ -78,7 +76,6 @@ public class SettingsTests : IDisposable
         dialog.Reset();
         Application.DoEvents();
         Assert.Equal("system", ChronikologioTheme.Name);
-        Assert.Equal("day", w.Layout);
         Assert.Equal("auto", w.LanguageSetting);
         Assert.Equal("cy", w.Region);   // the reset is about the look: the country stays
     }

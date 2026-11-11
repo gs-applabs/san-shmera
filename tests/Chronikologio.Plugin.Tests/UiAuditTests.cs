@@ -1,4 +1,4 @@
-using Chronikologio.Core;
+﻿using Chronikologio.Core;
 using Chronikologio.UI;
 using Xunit;
 
@@ -146,14 +146,13 @@ public class UiAuditTests : IDisposable
         {
             ChronikologioTheme.Set(theme);
             foreach (var region in new[] { "gr", "cy" })
-                foreach (var layout in UiSettings.LayoutNames)
+                foreach (var layout in new[] { "day" })
                     foreach (var day in Days)
                     {
                         using var window = Open(width, height);
                         window.PerformLayout();
                         window.ChooseTheme(theme);
                         window.ChooseRegion(region);
-                        window.ChooseLayout(layout);
                         window.SetDate(day);
                         Application.DoEvents();
                         window.PerformLayout();
@@ -182,11 +181,10 @@ public class UiAuditTests : IDisposable
     public void DarkThemeUsesDarkBackgroundsInEveryLayout()
     {
         ChronikologioTheme.Set("dark");
-        foreach (var layout in UiSettings.LayoutNames)
+        foreach (var layout in new[] { "day" })
         {
             using var window = Open(1100, 700);
             window.PerformLayout();
-            window.ChooseLayout(layout);
             foreach (var c in All(window).Where(Shown).OfType<ScrollableControl>().Where(s => s.BackColor.A == 255))
                 Assert.True(Luminance(c.BackColor) < 0.25, $"{layout}: {Name(c)} has a light background {c.BackColor} in the dark theme");
             foreach (var tab in All(window).OfType<TabControl>())
@@ -215,12 +213,11 @@ public class UiAuditTests : IDisposable
         foreach (var theme in new[] { "dark", "light" })
         {
             ChronikologioTheme.Set(theme);
-            foreach (var layout in UiSettings.LayoutNames)
+            foreach (var layout in new[] { "day" })
                 foreach (var date in days)
                 {
                     using var window = Open(1100, 700);
                     window.ChooseTheme(theme);
-                    window.ChooseLayout(layout);
                     window.SetDate(date);
                     Application.DoEvents();
                     window.PerformLayout();
@@ -241,12 +238,11 @@ public class UiAuditTests : IDisposable
         foreach (var theme in new[] { "dark", "light" })
         {
             ChronikologioTheme.Set(theme);
-            foreach (var layout in UiSettings.LayoutNames)
+            foreach (var layout in new[] { "day" })
             {
                 using var window = Open(1100, 700);
                 window.ChooseTheme(theme);
                 window.PerformLayout();
-                window.ChooseLayout(layout);
                 window.SetDate(new DateOnly(2026, 12, 6));
                 Application.DoEvents();
                 window.PerformLayout();

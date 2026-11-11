@@ -1,4 +1,4 @@
-using Chronikologio.Core;
+﻿using Chronikologio.Core;
 using Chronikologio.UI;
 using Xunit;
 
@@ -68,18 +68,14 @@ public class EventCarouselTests
     }
 
     [Fact]
-    public void EveryLayoutOpensWithTheFrames()
+    public void TheDayScreenOpensOnADay()
     {
         var settings = Path.Combine(Path.GetTempPath(), "chronikologio-frames-" + Guid.NewGuid().ToString("N") + ".json");
         try
         {
             using var window = new MainWindow(DataRoot(), settings);
-            foreach (var name in UiSettings.LayoutNames)
-            {
-                window.ChooseLayout(name);
-                window.SetDate(new DateOnly(2026, 4, 6));
-                Assert.Equal(name, window.Layout);
-            }
+            window.SetDate(new DateOnly(2026, 4, 6));
+            Assert.Equal(new DateOnly(2026, 4, 6), window.SelectedDate);
         }
         finally { if (File.Exists(settings)) File.Delete(settings); }
     }

@@ -1,11 +1,12 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Chronikologio.Core;
 using Opsis.UI;
 
 namespace Chronikologio.UI;
 
 /// <summary>
-/// The window of the stand-alone app: a name search and the calendar panel. The menu bar is hidden until Ctrl+M (like the other Opsis apps);
+/// The window of the stand-alone app: the day screen (<see cref="DayOverviewLayout"/>) with a name search, and the side menu of Opsis style with the animated logo on top.
+/// There is no menu bar: the look, the country, the language and the updates are in the settings window (Ctrl+,), the guide, the history of versions and the licence in the help window (F1).
 /// Ctrl+T changes the theme. The look comes from the shared Opsis.UI palettes through <see cref="ChronikologioTheme"/>.
 /// </summary>
 public sealed class MainWindow : Form
@@ -20,13 +21,8 @@ public sealed class MainWindow : Form
     private readonly CalendarPanel _panel;
     private readonly Panel _host = new() { Dock = DockStyle.Fill };
     private readonly SideRail _rail = new();
-    private readonly List<ToolStripMenuItem> _layoutItems = new();
-    private DayLayout? _layout;
+    private DayLayout _layout;
     private DateOnly _date = DateOnly.FromDateTime(DateTime.Today);
-    private readonly MenuStrip _menu = new() { Dock = DockStyle.Top, Renderer = new FlatMenuRenderer(), Visible = false };
-    private readonly List<ToolStripMenuItem> _themeItems = new();
-    private readonly List<ToolStripMenuItem> _regionItems = new();
-    private readonly List<ToolStripMenuItem> _languageItems = new();
 
     public MainWindow(string dataRoot, string? settingsPath = null)
     {
@@ -37,7 +33,7 @@ public sealed class MainWindow : Form
         Loc.Set(Countries.Resolve(_settings.Language, _store.Region));
 
         Font = new Font("Segoe UI", 10f);
-        // Wide enough for the side rail, the two columns of cards and the small calendar; the last size is remembered.
+        // Wide enough for the side menu, the two columns of cards and the small calendar; the last size is remembered.
         MinimumSize = new Size(UiSettings.MinWidth, UiSettings.MinHeight);
         ClientSize = new Size(_settings.Width, _settings.Height);
         StartPosition = FormStartPosition.CenterScreen;
@@ -50,45 +46,31 @@ public sealed class MainWindow : Form
         _panel.StoreChanged += store =>
         {
             _store = store;
-            _layout?.SetStore(store);
+            _layout.SetStore(store);
             _settings.Region = store.Region;   // the panel saved it already; keep this copy in step so later saves do not undo it
             _searchBar.SetStore(store);
-            foreach (var item in _regionItems) item.Checked = (string?)item.Tag == store.Region;
         };
+
+        _layout = new DayOverviewLayout(_store) { Dock = DockStyle.Fill };
+        _layout.SelectedDate = _date;
+        _layout.DateChanged += SetDate;
+        _layout.RegionRequested += ChooseRegion;
+        _host.Controls.Add(_layout);
+        Controls.Add(_host);
+        Controls.Add(_rail);
+        _searchBar.SetStore(_store);
+        _searchBar.DateChosen += SetDate;
+        _layout.AttachSearch(_searchBar);   // in the top row of the day screen, next to the Today button
+
         ApplyLanguage();
         Loc.Changed += ApplyLanguage;
         Disposed += (_, _) => Loc.Changed -= ApplyLanguage;
-        Controls.Add(_host);
-        Controls.Add(_rail);
-        Controls.Add(_menu);
-        _searchBar.SetStore(_store);
-        _searchBar.DateChosen += SetDate;
-        MainMenuStrip = _menu;
-        ChooseLayout(_settings.Layout);
-        BuildRail();
 
         ChronikologioTheme.Changed += ApplyTheme;
         Disposed += (_, _) => ChronikologioTheme.Changed -= ApplyTheme;
 
         ChronikologioTheme.Set(_settings.Theme);
-        _menuShown = _settings.MenuShown;
-        _menu.Visible = _menuShown;
         ApplyTheme();
-    }
-
-    // Kept in a field: Control.Visible reads false while the window itself is not shown yet.
-    private bool _menuShown;
-
-    /// <summary>Is the menu bar shown (or going to be shown when the window opens).</summary>
-    public bool MenuVisible => _menuShown;
-
-    /// <summary>Ctrl+M: shows or hides the menu bar and remembers the choice.</summary>
-    public void ToggleMenu()
-    {
-        _menuShown = !_menuShown;
-        _menu.Visible = _menuShown;
-        _settings.MenuShown = _menuShown;
-        _settings.Save(_settingsPath);
     }
 
     /// <summary>Ctrl+T: the next theme of the list.</summary>
@@ -111,86 +93,48 @@ public sealed class MainWindow : Form
 
     private void BuildRail()
     {
+        _rail.BrandTitle = Loc.T("brand.title");
+        _rail.BrandSub = Loc.T("brand.sub");
+        _rail.BrandVersion = "v" + UpdateChecker.Norm(UpdateChecker.Current);
         _rail.SetItems(new[]
         {
-            new SideRail.RailItem("today", "", Loc.T("menu.today") + " (Ctrl+Home)", GoToday),
-            new SideRail.RailItem("theme", "", Loc.T("menu.theme") + " (Ctrl+T)", CycleTheme),
-            new SideRail.RailItem("settings", "\uE713", Loc.T("menu.settings") + " (Ctrl+,)", ShowSettings),
-            new SideRail.RailItem("help", "", Loc.T("menu.about") + " (F1)", ShowGuide)
+            new SideRail.RailItem("today", "\uE787", Loc.T("menu.today") + " (Ctrl+Home)", GoToday, Loc.T("menu.today")),
+            new SideRail.RailItem("theme", "\uE790", Loc.T("menu.theme") + " (Ctrl+T)", CycleTheme, Loc.T("menu.theme")),
+            new SideRail.RailItem("settings", "", Loc.T("menu.settings") + " (Ctrl+,)", ShowSettings, Loc.T("menu.settings")),
+            new SideRail.RailItem("help", "", Loc.T("menu.about") + " (F1)", ShowGuide, Loc.T("menu.about"))
         });
-        _rail.Checked = Layout;
     }
 
-    /// <summary>The way a day is shown: "cards", "feed" or "tabs".</summary>
-    public string Layout => _layout?.Name ?? _settings.Layout;
-
-    /// <summary>The day shown in every layout.</summary>
+    /// <summary>The day shown on the screen.</summary>
     public DateOnly SelectedDate => _date;
 
-    /// <summary>Goes to today in every layout and the shared calendar, and makes the button of the rail light up for a moment so the click is seen even when today is already shown.</summary>
+    /// <summary>Goes to today on the screen and the shared calendar, and makes the button of the side menu light up for a moment so the click is seen even when today is already shown.</summary>
     public void GoToday()
     {
         SetDate(DateOnly.FromDateTime(DateTime.Today));
         _rail.Pulse("today");
     }
 
-    /// <summary>Shows a day in the chosen layout and in the shared calendar.</summary>
+    /// <summary>Shows a day on the screen and in the shared calendar.</summary>
     public void SetDate(DateOnly date)
     {
         _date = date;
-        if (_layout is not null) _layout.SelectedDate = date;
+        _layout.SelectedDate = date;
         if (_panel.SelectedDate != date) _panel.SelectedDate = date;
     }
 
-    /// <summary>Switches between the three layouts (cards, feed, tabs) and remembers the choice.</summary>
-    public void ChooseLayout(string name)
-    {
-        if (!UiSettings.LayoutNames.Contains(name) || _layout?.Name == name) return;
-        var old = _layout;
-        old?.DetachSearch(_searchBar);   // before the old layout is disposed, so the search is not disposed with its header
-        _host.Controls.Clear();
-        old?.Dispose();
-        _layout = name switch
-        {
-            "cards" => new CardsLayout(_store),
-            "feed" => new FeedLayout(_store),
-            "tabs" => new TabsLayout(_store, _panel),
-            _ => new DayOverviewLayout(_store)
-        };
-        _layout.Dock = DockStyle.Fill;
-        _layout.SelectedDate = _date;
-        _layout.DateChanged += SetDate;
-        _layout.RegionRequested += ChooseRegion;
-        _host.Controls.Add(_layout);
-        _layout.AttachSearch(_searchBar);   // in the top row of the layout, next to the Today button
-        _settings.Layout = name;
-        _settings.Save(_settingsPath);
-        foreach (var item in _layoutItems) item.Checked = (string?)item.Tag == name;
-        _rail.Checked = name;
-    }
-
-    /// <summary>Ctrl+L: the next layout of the list.</summary>
-    public void CycleLayout() => ChooseLayout(UiSettings.LayoutNames[(UiSettings.LayoutNames.ToList().IndexOf(Layout) + 1) % UiSettings.LayoutNames.Count]);
-
-    /// <summary>Switches the database and, with it, the interface language (the flag button of the panel does the same).</summary>
+    /// <summary>Switches the database and, with it, the interface language (the flag button of the screen does the same).</summary>
     public void ChooseRegion(string region)
     {
         _panel.ChooseRegion(region);
     }
 
-    /// <summary>Texts of the window in the language of the chosen country; the menu is built again because its items carry the texts.</summary>
+    /// <summary>Texts of the window in the language of the chosen country.</summary>
     private void ApplyLanguage()
     {
         Text = Loc.T("app.title");
         _searchBar.SetPlaceholder(Loc.T("search.placeholder"));
-        _themeItems.Clear();
-        _regionItems.Clear();
-        _languageItems.Clear();
-        _layoutItems.Clear();
-        _menu.Items.Clear();
-        BuildMenu();
         BuildRail();
-        foreach (var item in _themeItems) item.Checked = (string?)item.Tag == ChronikologioTheme.Name;
     }
 
     /// <summary>The language of the interface: "auto" (that of the country), "el" or "en". Kept apart from the country and remembered.</summary>
@@ -199,8 +143,7 @@ public sealed class MainWindow : Form
         if (setting is not ("auto" or "el" or "en")) return;
         _settings.Language = setting;
         _settings.Save(_settingsPath);
-        if (!Loc.Set(Countries.Resolve(setting, _store.Region))) return;
-        foreach (var item in _languageItems) item.Checked = (string?)item.Tag == setting;
+        Loc.Set(Countries.Resolve(setting, _store.Region));
     }
 
     /// <summary>The language setting in use: "auto", "el" or "en".</summary>
@@ -218,10 +161,8 @@ public sealed class MainWindow : Form
     {
         switch (keyData)
         {
-            case Keys.Control | Keys.M: ToggleMenu(); return true;
             case Keys.Control | Keys.T: CycleTheme(); return true;
             case Keys.Control | Keys.Home: GoToday(); return true;
-            case Keys.Control | Keys.L: CycleLayout(); return true;
             case Keys.F1: ShowGuide(); return true;
             case Keys.Control | Keys.Oemcomma: ShowSettings(); return true;
             case Keys.Control | Keys.F: _searchBar.Focus(); return true;
@@ -232,76 +173,24 @@ public sealed class MainWindow : Form
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData) => HandleShortcut(keyData) || base.ProcessCmdKey(ref msg, keyData);
 
-    private void BuildMenu()
-    {
-        var file = new ToolStripMenuItem(Loc.T("menu.file"));
-        file.DropDownItems.Add(new ToolStripMenuItem(Loc.T("menu.exit"), null, (_, _) => Close()) { ShortcutKeyDisplayString = "Alt+F4" });
-
-        var view = new ToolStripMenuItem(Loc.T("menu.view"));
-        view.DropDownItems.Add(new ToolStripMenuItem(Loc.T("menu.today"), null, (_, _) => GoToday()) { ShortcutKeyDisplayString = "Ctrl+Home" });
-        var layouts = new ToolStripMenuItem(Loc.T("menu.layout")) { ShortcutKeyDisplayString = "Ctrl+L" };
-        foreach (var name in UiSettings.LayoutNames)
-        {
-            var item = new ToolStripMenuItem(Loc.T("layout." + name), null, (_, _) => ChooseLayout(name)) { Tag = name, Checked = name == Layout };
-            _layoutItems.Add(item);
-            layouts.DropDownItems.Add(item);
-        }
-        view.DropDownItems.Add(layouts);
-        var themes = new ToolStripMenuItem(Loc.T("menu.theme")) { ShortcutKeyDisplayString = "Ctrl+T" };
-        foreach (var name in ChronikologioTheme.Names)
-        {
-            var item = new ToolStripMenuItem(ChronikologioTheme.DisplayName(name), null, (_, _) => ChooseTheme(name)) { Tag = name };
-            _themeItems.Add(item);
-            themes.DropDownItems.Add(item);
-        }
-        view.DropDownItems.Add(themes);
-
-        var calendar = new ToolStripMenuItem(Loc.T("menu.calendar"));
-        foreach (var country in Countries.All)
-        {
-            var key = country.Region;
-            var item = new ToolStripMenuItem(Loc.T("region." + key), Flags.Create(key, 24, 16), (_, _) => ChooseRegion(key)) { Tag = key, Checked = key == _store.Region };
-            _regionItems.Add(item);
-            calendar.DropDownItems.Add(item);
-        }
-        view.DropDownItems.Add(calendar);
-        var languages = new ToolStripMenuItem(Loc.T("menu.language"));
-        foreach (var code in new[] { "auto", "el", "en" })
-        {
-            var chosen = code;
-            var item = new ToolStripMenuItem(Loc.T("language." + code), null, (_, _) => ChooseLanguage(chosen)) { Tag = code, Checked = code == _settings.Language };
-            _languageItems.Add(item);
-            languages.DropDownItems.Add(item);
-        }
-        view.DropDownItems.Add(languages);
-        view.DropDownItems.Add(new ToolStripMenuItem(Loc.T("menu.settings"), null, (_, _) => ShowSettings()) { ShortcutKeyDisplayString = "Ctrl+," });
-        view.DropDownItems.Add(new ToolStripMenuItem(Loc.T("menu.hidemenu"), null, (_, _) => ToggleMenu()) { ShortcutKeyDisplayString = "Ctrl+M" });
-
-        var help = new ToolStripMenuItem(Loc.T("menu.help"));
-        help.DropDownItems.Add(new ToolStripMenuItem(Loc.T("menu.guide"), null, (_, _) => ShowGuide()) { ShortcutKeyDisplayString = "F1" });
-        help.DropDownItems.Add(new ToolStripMenuItem(Loc.T("menu.shortcuts"), null, (_, _) => ShowHelp()));
-        help.DropDownItems.Add(new ToolStripSeparator());
-        help.DropDownItems.Add(new ToolStripMenuItem(Loc.T("menu.changelog"), null, (_, _) => ShowChangelog()));
-        help.DropDownItems.Add(new ToolStripMenuItem(Loc.T("menu.license"), null, (_, _) => ShowLicense()));
-        if (_updates is not null)
-        {
-            help.DropDownItems.Add(new ToolStripSeparator());
-            help.DropDownItems.Add(new ToolStripMenuItem(Loc.T("upd.menu.check"), null, async (_, _) => await CheckForUpdatesAsync(true)));
-            help.DropDownItems.Add(new ToolStripMenuItem(Loc.T("upd.menu.auto"), null, (_, _) => { _settings.CheckForUpdates = !_settings.CheckForUpdates; _settings.Save(_settingsPath); BuildMenu(); }) { Checked = _settings.CheckForUpdates });
-        }
-
-        _menu.Items.AddRange(new ToolStripItem[] { file, view, help });
-    }
-
     private UpdateChecker? _updates;
     private System.Windows.Forms.Timer? _updateTimer;
     private bool _offering;
 
-    /// <summary>Turns on the update of the stand-alone app (the plugin inside Opsis never calls this): a check 30 seconds after the start and then every 24 hours, and the Help menu items. Never blocks the window.</summary>
+    /// <summary>True in the stand-alone app, which looks for updates by itself; inside Opsis the plugin is updated by Opsis and the window shows no update controls.</summary>
+    public bool UpdatesEnabled => _updates is not null;
+
+    /// <summary>The automatic check for a new version (once a day, never blocking the window); the user can turn it off in the settings.</summary>
+    public bool AutoUpdateCheck
+    {
+        get => _settings.CheckForUpdates;
+        set { _settings.CheckForUpdates = value; _settings.Save(_settingsPath); }
+    }
+
+    /// <summary>Turns on the update of the stand-alone app (the plugin inside Opsis never calls this): a check 30 seconds after the start and then every 24 hours. Never blocks the window.</summary>
     public void EnableUpdates(UpdateChecker? checker = null)
     {
         _updates = checker ?? new UpdateChecker();
-        BuildMenu();
         _updateTimer = new System.Windows.Forms.Timer { Interval = 30_000 };
         _updateTimer.Tick += async (_, _) => { _updateTimer.Interval = (int)TimeSpan.FromHours(24).TotalMilliseconds; if (_settings.CheckForUpdates) await CheckForUpdatesAsync(false); };
         _updateTimer.Start();
@@ -329,33 +218,26 @@ public sealed class MainWindow : Form
 
     private void ShowGuide() => HelpDialog.ShowFor(this, 0);
 
-    /// <summary>Opens the settings window (Ctrl+, or the gear of the rail).</summary>
+    /// <summary>Opens the settings window (Ctrl+, or the gear of the side menu).</summary>
     public void ShowSettings() => SettingsDialog.ShowFor(this);
 
-    /// <summary>Puts the look back to its defaults: system theme, the cards layout, automatic language, no menu bar. The country is kept.</summary>
+    /// <summary>The list of the keyboard shortcuts.</summary>
+    public void ShowShortcuts() => MessageBox.Show(this, Loc.T("help.text"), Loc.T("menu.shortcuts"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+    /// <summary>Puts the look back to its defaults: system theme and automatic language. The country is kept.</summary>
     public void ResetLook()
     {
         ChooseTheme("system");
-        ChooseLayout("day");
         ChooseLanguage("auto");
-        if (MenuVisible) ToggleMenu();
     }
 
-    private void ShowChangelog() => HelpDialog.ShowFor(this, 1);
-    private void ShowLicense() => HelpDialog.ShowFor(this, 2);
-
-    private void ShowHelp() => MessageBox.Show(this, Loc.T("help.text"), Loc.T("menu.shortcuts"), MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-    /// <summary>Restyles the window, the search box and the menu with the current palette, and the title bar with its dark or light mode.</summary>
+    /// <summary>Restyles the window and the search box with the current palette, and the title bar with its dark or light mode.</summary>
     private void ApplyTheme()
     {
         var p = ChronikologioTheme.Palette;
         BackColor = p.Background;
         ForeColor = p.Text;
         _searchBar.Restyle();
-        _menu.BackColor = p.Surface;
-        _menu.ForeColor = p.Text;
-        foreach (var item in _themeItems) item.Checked = (string?)item.Tag == ChronikologioTheme.Name;
         _rail.Invalidate();
         if (IsHandleCreated) TitleBar.Apply(Handle, p.IsDark);
         Invalidate(true);

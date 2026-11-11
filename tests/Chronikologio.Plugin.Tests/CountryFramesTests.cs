@@ -1,4 +1,4 @@
-using Chronikologio.Core;
+﻿using Chronikologio.Core;
 using Chronikologio.UI;
 using Xunit;
 
@@ -14,31 +14,6 @@ public class CountryFramesTests : IDisposable
     private static IEnumerable<Control> All(Control root)
     {
         foreach (Control c in root.Controls) { yield return c; foreach (var d in All(c)) yield return d; }
-    }
-
-    [Theory]
-    [InlineData("cards")]
-    [InlineData("feed")]
-    [InlineData("tabs")]
-    public void TheFirstFrameFollowsTheFlag(string layout)
-    {
-        using var window = new MainWindow(DataRoot(), _settings) { StartPosition = FormStartPosition.Manual, Location = new Point(-32000, -32000), ShowInTaskbar = false, Opacity = 0 };
-        window.Show();
-        window.ChooseLayout(layout);
-        window.SetDate(new DateOnly(2026, 8, 14));
-
-        window.ChooseRegion("gr");
-        Application.DoEvents();
-        var titles = All(window).OfType<EventCarousel>().Select(c => c.FrameTitle).ToList();
-        Assert.Contains("Σαν σήμερα στην Ελλάδα", titles);
-        Assert.Contains("Σαν σήμερα στο εξωτερικό", titles);
-
-        window.ChooseRegion("cy");
-        Application.DoEvents();
-        titles = All(window).OfType<EventCarousel>().Select(c => c.FrameTitle).ToList();
-        Assert.Contains("Σαν σήμερα στην Κύπρο", titles);
-        Assert.DoesNotContain("Σαν σήμερα στην Ελλάδα", titles);
-        Assert.Contains("Σαν σήμερα στο εξωτερικό", titles);
     }
 
     [Fact]

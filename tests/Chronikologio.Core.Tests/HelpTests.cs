@@ -1,4 +1,4 @@
-using Chronikologio.Core;
+﻿using Chronikologio.Core;
 using Xunit;
 
 namespace Chronikologio.Core.Tests;
@@ -19,6 +19,6 @@ public class HelpTests
     {
         foreach (var key in new[] { "menu.guide", "menu.changelog", "guide.title", "changelog.title", "guide.text" })
             Assert.NotEqual(key, Loc.T(key));
-        Assert.Contains("Ctrl+M", Loc.T("guide.text"));
+        Assert.Contains("Ctrl+T", Loc.T("guide.text"));
     }
 }

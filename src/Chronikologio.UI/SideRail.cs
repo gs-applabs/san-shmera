@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using Chronikologio.Core;
 
 namespace Chronikologio.UI;
@@ -25,17 +25,27 @@ public static class ThemeNative
     }
 }
 
-/// <summary>A vertical bar of icon buttons at the left edge of the window (today, the three layouts, search, theme, help). Drawn in the colours of the theme.</summary>
+/// <summary>
+/// The side menu at the left edge of the window, in the style of the sidebar of Opsis: a brand block on top (the animated logo, the title and the version of the app),
+/// then the buttons (today, theme, settings, help) with their names. Drawn in the colours of the theme.
+/// </summary>
 public sealed class SideRail : Control
 {
-    public sealed record RailItem(string Key, string Glyph, string Tip, Action Click);
+    public sealed record RailItem(string Key, string Glyph, string Tip, Action Click, string Label = "");
 
     private readonly List<RailItem> _items = new();
     private readonly ToolTip _tip = new();
+    private readonly Action _tick;
     private int _hover = -1;
     private string? _checked;
 
-    public const int RailWidth = 52;
+    public const int RailWidth = 224;
+    public const int BrandHeight = 88;
+
+    /// <summary>The title, the second line and the version shown next to the logo.</summary>
+    public string BrandTitle { get; set; } = "";
+    public string BrandSub { get; set; } = "";
+    public string BrandVersion { get; set; } = "";
 
     public SideRail()
     {
@@ -43,6 +53,8 @@ public sealed class SideRail : Control
         Dock = DockStyle.Left;
         Width = RailWidth;
         Cursor = Cursors.Hand;
+        _tick = () => { if (WaveClock.ShouldDraw(this)) Invalidate(new Rectangle(0, 0, Width, BrandHeight)); };   // only the logo moves
+        WaveClock.Subscribe(_tick);
     }
 
     public IReadOnlyList<RailItem> Items => _items;
@@ -54,7 +66,7 @@ public sealed class SideRail : Control
         Invalidate();
     }
 
-    /// <summary>The key of the item drawn as selected (the layout in use), or null.</summary>
+    /// <summary>The key of the item drawn as selected, or null.</summary>
     public string? Checked
     {
         get => _checked;
@@ -73,7 +85,7 @@ public sealed class SideRail : Control
         timer.Start();
     }
 
-    private Rectangle Cell(int index) => new(0, 8 + index * 48, Width, 44);
+    private Rectangle Cell(int index) => new(8, BrandHeight + 6 + index * 46, Width - 16, 42);
 
     protected override void OnPaint(PaintEventArgs e)
     {
@@ -81,21 +93,82 @@ public sealed class SideRail : Control
         var g = e.Graphics;
         g.Clear(p.Surface);
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-        using var glyphFont = new Font("Segoe MDL2 Assets", 15f);
+        DrawBrand(g, p);
+        using var glyphFont = new Font("Segoe MDL2 Assets", 14f);
+        using var labelFont = new Font("Segoe UI", 10.5f);
         using var accent = new SolidBrush(p.Accent);
         using var hoverBrush = new SolidBrush(Color.FromArgb(40, p.Text));
         for (var i = 0; i < _items.Count; i++)
         {
             var r = Cell(i);
             var selected = _items[i].Key == _checked || _items[i].Key == _pulse;
+            var color = selected ? p.Accent : p.TextMuted;
             if (i == _hover || _items[i].Key == _pulse) g.FillRectangle(hoverBrush, r);
-            if (selected) g.FillRectangle(accent, r.X, r.Y + 8, 3, r.Height - 16);
-            if (_items[i].Key == "help") DrawInfo(g, r, selected ? p.Accent : p.TextMuted);
-            else TextRenderer.DrawText(g, _items[i].Glyph, glyphFont, r, selected ? p.Accent : p.TextMuted,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            if (selected) g.FillRectangle(accent, 0, r.Y + 8, 3, r.Height - 16);
+            var iconCell = new Rectangle(r.X, r.Y, 44, r.Height);
+            if (_items[i].Key == "help") DrawInfo(g, iconCell, color);
+            else TextRenderer.DrawText(g, _items[i].Glyph, glyphFont, iconCell, color, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            TextRenderer.DrawText(g, _items[i].Label, labelFont, new Rectangle(r.X + 46, r.Y, r.Width - 50, r.Height), selected ? p.Accent : p.Text,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
         }
         using var edge = new Pen(Color.FromArgb(60, p.Text));
         g.DrawLine(edge, Width - 1, 0, Width - 1, Height);
+        g.DrawLine(edge, 12, BrandHeight, Width - 14, BrandHeight);
+    }
+
+    /// <summary>The brand block of Opsis: a rounded logo (gradient, gloss, a still wave and a bright dot that runs along it, a halo that pulses), the title and the version.</summary>
+    private void DrawBrand(Graphics g, Opsis.UI.OpsisPalette p)
+    {
+        var t = WaveClock.Time * 3.3;   // the same pace as the logo of Opsis
+        var old = g.SmoothingMode;
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        var state = g.Save();
+        g.TranslateTransform(14, 16);
+        const float size = 56f;
+        var scale = size / 36f;
+        g.ScaleTransform(scale, scale);
+        var cyan = Color.FromArgb(0, 180, 216); var blue = Color.FromArgb(58, 110, 214);
+        using (var halo = new SolidBrush(Color.FromArgb((int)(25 + (Math.Sin(t) * 0.5 + 0.5) * 55), cyan))) g.FillEllipse(halo, -2, -2, 40, 40);
+        var rect = new Rectangle(2, 2, 32, 32);
+        using (var path = Rounded(rect, 8))
+        {
+            using (var back = new System.Drawing.Drawing2D.LinearGradientBrush(rect, cyan, blue, 45f)) g.FillPath(back, path);
+            var oldClip = g.Clip;
+            g.SetClip(path, System.Drawing.Drawing2D.CombineMode.Intersect);
+            var gloss = new Rectangle(rect.X, rect.Y, rect.Width, rect.Height / 2 + 4);
+            using (var glossBrush = new System.Drawing.Drawing2D.LinearGradientBrush(gloss, Color.FromArgb(120, 255, 255, 255), Color.FromArgb(0, 255, 255, 255), 90f)) g.FillRectangle(glossBrush, gloss);
+            g.Clip = oldClip;
+        }
+        PointF p0 = new(8, 20), p1 = new(13, 13), p2 = new(21, 27), p3 = new(26, 20);
+        using (var wave = new Pen(Color.FromArgb(150, 255, 255, 255), 2.2f) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round })
+            g.DrawBezier(wave, p0, p1, p2, p3);
+        var u = (t * 0.22) % 1.0; var m = 1 - u;
+        var nx = (float)(m * m * m * p0.X + 3 * m * m * u * p1.X + 3 * m * u * u * p2.X + u * u * u * p3.X);
+        var ny = (float)(m * m * m * p0.Y + 3 * m * m * u * p1.Y + 3 * m * u * u * p2.Y + u * u * u * p3.Y);
+        using (var nodeHalo = new SolidBrush(Color.FromArgb(110, 255, 255, 255))) g.FillEllipse(nodeHalo, nx - 5, ny - 5, 10, 10);
+        g.FillEllipse(Brushes.White, nx - 2.3f, ny - 2.3f, 4.6f, 4.6f);
+        g.Restore(state);
+        g.SmoothingMode = old;
+
+        const int x = 14 + 56 + 10;
+        var width = Width - x - 8;
+        using var titleFont = new Font("Segoe UI", 12.5f, FontStyle.Bold);
+        using var smallFont = new Font("Segoe UI", 8.5f);
+        TextRenderer.DrawText(g, BrandTitle, titleFont, new Rectangle(x, 16, width, 24), p.Text, TextFormatFlags.Left | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
+        TextRenderer.DrawText(g, BrandSub, smallFont, new Rectangle(x, 42, width, 16), p.TextMuted, TextFormatFlags.Left | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
+        TextRenderer.DrawText(g, BrandVersion, smallFont, new Rectangle(x, 58, width, 16), p.TextMuted, TextFormatFlags.Left | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
+    }
+
+    private static System.Drawing.Drawing2D.GraphicsPath Rounded(Rectangle r, int radius)
+    {
+        var d = radius * 2;
+        var path = new System.Drawing.Drawing2D.GraphicsPath();
+        path.AddArc(r.X, r.Y, d, d, 180, 90);
+        path.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+        path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+        path.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+        path.CloseFigure();
+        return path;
     }
 
     /// <summary>The icon of the About page of Opsis: a circle with a dot and a stem.</summary>
@@ -146,7 +219,7 @@ public sealed class SideRail : Control
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) _tip.Dispose();
+        if (disposing) { WaveClock.Unsubscribe(_tick); _tip.Dispose(); }
         base.Dispose(disposing);
     }
 }

@@ -1,4 +1,4 @@
-using Chronikologio.UI;
+﻿using Chronikologio.UI;
 using Chronikologio.Core;
 using Opsis.UI;
 using Xunit;
@@ -80,14 +80,12 @@ public class ThemeAndMenuTests : IDisposable
     }
 
     [Fact]
-    public void TheMenuIsHiddenUntilCtrlM()
+    public void ThereIsNoMenuBarAndCtrlMDoesNothing()
     {
         using var window = new MainWindow(DataRoot(), _settings);
-        Assert.False(window.MenuVisible);
-        Assert.True(window.HandleShortcut(Keys.Control | Keys.M));
-        Assert.True(window.MenuVisible);
-        Assert.True(window.HandleShortcut(Keys.Control | Keys.M));
-        Assert.False(window.MenuVisible);
+        Assert.Empty(window.Controls.OfType<MenuStrip>());
+        Assert.False(window.HandleShortcut(Keys.Control | Keys.M));
+        Assert.False(window.HandleShortcut(Keys.Control | Keys.L));
         Assert.False(window.HandleShortcut(Keys.A));
     }
 
@@ -99,16 +97,13 @@ public class ThemeAndMenuTests : IDisposable
             window.ChooseTheme("light");
             window.HandleShortcut(Keys.Control | Keys.T);
             Assert.Equal("midnight", ChronikologioTheme.Name);   // the theme after "light" in the list
-            window.HandleShortcut(Keys.Control | Keys.M);
         }
         var saved = UiSettings.Load(_settings);
         Assert.Equal("midnight", saved.Theme);
-        Assert.True(saved.MenuShown);
 
         ChronikologioTheme.Set("dark");
         using var again = new MainWindow(DataRoot(), _settings);
         Assert.Equal("midnight", ChronikologioTheme.Name);   // restored at start-up
-        Assert.True(again.MenuVisible);
     }
 
     [Fact]
@@ -117,7 +112,6 @@ public class ThemeAndMenuTests : IDisposable
         File.WriteAllText(_settings, "{ not json");
         var s = UiSettings.Load(_settings);
         Assert.Equal("system", s.Theme);
-        Assert.False(s.MenuShown);
     }
 }
 

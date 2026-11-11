@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Chronikologio.UI;
 using Xunit;
 
@@ -14,16 +14,11 @@ public class RailTests : IDisposable
     private static SideRail RailOf(MainWindow w) =>
         (SideRail)typeof(MainWindow).GetField("_rail", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(w)!;
 
-    [Theory]
-    [InlineData("day")]
-    [InlineData("cards")]
-    [InlineData("feed")]
-    [InlineData("tabs")]
-    public void TheTodayButtonOfTheRailGoesToTodayInEveryLayout(string layout)
+    [Fact]
+    public void TheTodayButtonOfTheRailGoesToToday()
     {
         using var window = new MainWindow(DataRoot(), _settings) { StartPosition = FormStartPosition.Manual, Location = new Point(-32000, -32000), ShowInTaskbar = false, Opacity = 0 };
         window.Show();
-        window.ChooseLayout(layout);
         window.SetDate(new DateOnly(2026, 8, 15));
         Application.DoEvents();
         var today = DateOnly.FromDateTime(DateTime.Today);
@@ -35,7 +30,7 @@ public class RailTests : IDisposable
         window.SetDate(new DateOnly(2026, 8, 15));
         var rail = RailOf(window);
         var click = typeof(Control).GetMethod("OnMouseUp", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        click.Invoke(rail, new object[] { new MouseEventArgs(MouseButtons.Left, 1, 20, 30, 0) });
+        click.Invoke(rail, new object[] { new MouseEventArgs(MouseButtons.Left, 1, 30, SideRail.BrandHeight + 20, 0) });
         Assert.Equal(today, window.SelectedDate);
     }
 }

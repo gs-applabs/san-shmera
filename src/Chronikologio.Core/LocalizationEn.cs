@@ -1,4 +1,4 @@
-namespace Chronikologio.Core;
+﻿namespace Chronikologio.Core;
 
 /// <summary>The English interface texts. The database (saints, lives, events) stays Greek until it is translated; the interface around it speaks English.</summary>
 internal static class LocalizationEn
@@ -54,7 +54,9 @@ internal static class LocalizationEn
         ["settings.group.look"] = "Appearance",
         ["settings.group.calendar"] = "Country and language",
         ["settings.theme"] = "Theme",
-        ["settings.layout"] = "Layout",
+        ["brand.title"] = "Chronikologio",
+        ["brand.sub"] = "On this day",
+        ["settings.group.updates"] = "Updates",
         ["settings.menubar"] = "Show the menu bar (Ctrl+M)",
         ["settings.region"] = "Country and calendar",
         ["settings.language"] = "App language",
@@ -133,11 +135,11 @@ internal static class LocalizationEn
             "USE\n" +
             "• Click a day in the calendar. A short text appears under it and, when there is one, a picture.\n" +
             "• The button “Full text and sources” (or a double click on the short text) opens the full text with the pictures beside it.\n" +
-            "• The flag at the top left changes the country: the calendar changes with it, and the language too unless you chose one in View › Language. Greece and Cyprus exist today.\n" +
+            "• The flag at the top left changes the country: the calendar changes with it, and the language too unless you chose one in the Settings. Greece and Cyprus exist today.\n" +
             "• The search at the top right finds a name, a saint or an event, with or without accents.\n" +
             "• Major feasts are shown with a bold number and a small line under the day.\n\n" +
             "LOOK\n" +
-            "Ctrl+M shows and hides the menu. Ctrl+T changes the theme. Ctrl+L changes the layout: “Today” cards, day feed or tabs. Your choice is saved.\n\n" +
+            "The side menu has the buttons Today, Theme, Settings and About. Ctrl+T changes the theme. In the Settings (Ctrl+,) you choose the theme, the country, the language and, in the stand-alone app, the automatic check for updates. Your choice is saved.\n\n" +
             "BEWARE OF THE DATA\n" +
             "The texts were written from scratch and have not yet been verified against the official sources. The full text shows the state of each entry. Encyclopaedia links are only for more information.\n\n" +
             "SOURCES AND THANKS\n" +
@@ -152,7 +154,7 @@ internal static class LocalizationEn
             "WITH OPSIS\n" +
             "As a plugin of Opsis, the calendar replaces the built-in one and the “On this day” feed can appear in the bars of the News Crawler.",
         ["about.format"] = "Chronikologio — version {0}",
-        ["help.text"] = "Ctrl+M: show or hide the menu\nCtrl+T: change theme\nCtrl+L: change layout\nCtrl+Home: today\nCtrl+F: search\nF1: user guide\n\n" +
+        ["help.text"] = "Ctrl+T: change theme\nCtrl+,: settings\nCtrl+K or Ctrl+F: search\nCtrl+Home: today\nCtrl+F: search\nF1: user guide\n\n" +
                         "The flag at the top left changes the country, that is the calendar and, unless you chose a language, the language of the app.\n" +
                         "A double click on the short text, or the button under it, opens the full text with the sources.",
         ["short.noentries"] = "There are no entries for this day yet.",
