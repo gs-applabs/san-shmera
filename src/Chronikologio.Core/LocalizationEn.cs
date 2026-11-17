@@ -30,6 +30,8 @@ internal static class LocalizationEn
         ["chip.births"] = "Births",
         ["chip.deaths"] = "Deaths",
         ["hero.kicker"] = "Saint of the day",
+        ["names.title"] = "Celebrating today",
+        ["names.etymology"] = "Where the names come from",
         ["hero.read"] = "Read the life and the sources →",
         ["hero.others"] = "And {0} more: {1}",
         ["menu.settings"] = "Settings",

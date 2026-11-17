@@ -246,6 +246,12 @@ public sealed class DayOverviewLayout : DayLayout
     private readonly FlowLayoutPanel _names = new() { Dock = DockStyle.Top, Height = 34, WrapContents = true, Padding = new Padding(0, 4, 0, 0) };
     private readonly Label _others = new() { Dock = DockStyle.Bottom, Height = 22, Tag = "muted", AutoEllipsis = true };
     private readonly LinkLabel _read = new() { Dock = DockStyle.Bottom, Height = 24, LinkBehavior = LinkBehavior.HoverUnderline };
+    // every name that celebrates today (nothing cut) and, under them, the origin and the meaning of each
+    private readonly Panel _namesCard = new() { Tag = "card", Height = 0, Padding = new Padding(14, 10, 14, 10), Margin = new Padding(0, 0, 0, 12), Visible = false };
+    private readonly Label _namesTitle = new() { AutoSize = false, Height = 22, Left = 14, Top = 10, Font = new Font("Segoe UI", 10.5f, FontStyle.Bold) };
+    private readonly Label _namesAll = new() { AutoSize = false, Left = 14 };
+    private readonly Label _etymTitle = new() { AutoSize = false, Height = 22, Left = 14, Font = new Font("Segoe UI", 10.5f, FontStyle.Bold) };
+    private readonly Label _etymText = new() { AutoSize = false, Left = 14, Tag = "muted" };
     private readonly Panel _band = new() { Tag = "card", Height = 92, Margin = new Padding(0, 0, 0, 8) };   // the filters: no moving background here, the waves live only in the header
     private readonly Label _bandText = new() { Left = 14, Top = 8, Height = 22, AutoSize = false, Font = new Font("Segoe UI", 10.5f, FontStyle.Bold) };
     private readonly FlowLayoutPanel _filters = new() { Left = 10, Top = 40, Height = 40, WrapContents = false, AutoSize = false };
@@ -284,7 +290,9 @@ public sealed class DayOverviewLayout : DayLayout
             var index = i;
             _chips[i].Click += (_, _) => { _filter = index; ShowCards(); };
         }
+        _namesCard.Controls.AddRange(new Control[] { _namesTitle, _namesAll, _etymTitle, _etymText });
         _stack.Controls.Add(_hero);
+        _stack.Controls.Add(_namesCard);
         _stack.Controls.Add(_band);
         _stack.Controls.Add(_timeline);
         _stack.Controls.Add(_cards);
@@ -315,10 +323,51 @@ public sealed class DayOverviewLayout : DayLayout
         _hero.Height = Math.Max(176, 20 + 30 + _heroText.Height + wanted + 24 + 22 + 28);
     }
 
+    // the card is as high as the two texts need (the page scrolls when a day has many names)
+    private void FitNames()
+    {
+        if (!_namesCard.Visible) return;
+        var w = Math.Max(200, _namesCard.Width - 28);
+        Size Measure(Label l) => TextRenderer.MeasureText(l.Text, l.Font, new Size(w, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
+        _namesAll.Width = w; _etymText.Width = w; _namesTitle.Width = w; _etymTitle.Width = w;
+        var y = 10;
+        _namesTitle.Top = y; y += 26;
+        _namesAll.Top = y; _namesAll.Height = Measure(_namesAll).Height + 4; y += _namesAll.Height + 10;
+        var hasEtym = _etymText.Text.Length > 0;
+        _etymTitle.Visible = _etymText.Visible = hasEtym;
+        if (hasEtym) { _etymTitle.Top = y; y += 26; _etymText.Top = y; _etymText.Height = Measure(_etymText).Height + 4; y += _etymText.Height; }
+        _namesCard.Height = y + 12;
+    }
+
+    private void ShowNames(DayView day)
+    {
+        var names = day.Names.GroupBy(n => n.Name).Select(g => g.First()).ToList();
+        _namesCard.Visible = names.Count > 0;
+        if (names.Count == 0) return;
+        _namesTitle.Text = Loc.T("names.title");
+        _etymTitle.Text = Loc.T("names.etymology");
+        _namesAll.Text = string.Join(" · ", names.Select(n => n.Variants.Length > 0 ? $"{n.Name} ({string.Join(", ", n.Variants.Distinct())})" : n.Name));
+        var lines = new List<string>();
+        foreach (var n in names)
+        {
+            var e = n.Etymology;
+            var origin = (e.Origin ?? "").Trim(); var meaning = (e.Meaning ?? "").Trim();
+            var line = origin.Length > 0 && meaning.Length > 0 ? $"{n.Name} — {origin}: {meaning}" : meaning.Length > 0 ? $"{n.Name} — {meaning}" : origin.Length > 0 ? $"{n.Name} — {origin}" : "";
+            if (line.Length == 0) continue;   // no origin known: no empty line and no invented meaning
+            if (!string.IsNullOrWhiteSpace(e.Note)) line += "\n    " + e.Note.Trim();
+            lines.Add(line);
+        }
+        _etymText.Text = string.Join("\n", lines);
+        _namesCard.AccessibleName = _namesTitle.Text;
+        FitNames();
+    }
+
     private void FitWidths()
     {
         var w = Math.Max(300, _stack.ClientSize.Width - _stack.Padding.Horizontal - SystemInformation.VerticalScrollBarWidth);
         _hero.Width = w;
+        _namesCard.Width = w;
+        FitNames();
         _band.Width = w;
         _bandText.Width = w - 28;
         _filters.Width = w - 20;
@@ -434,6 +483,7 @@ public sealed class DayOverviewLayout : DayLayout
         foreach (var n in names.Take(shown)) _names.Controls.Add(new Chip(false) { Text = n });
         if (names.Count > shown) _names.Controls.Add(new Chip(false) { Text = $"+{names.Count - shown}" });
         _heroNames = names.Count;
+        ShowNames(day);
         FitHero();
         _read.Links.Clear();
         _read.Text = Loc.T("hero.read");

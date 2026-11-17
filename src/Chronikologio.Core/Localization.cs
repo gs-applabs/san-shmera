@@ -61,6 +61,8 @@ public static class Loc
             ["chip.births"] = "Γεννήσεις",
             ["chip.deaths"] = "Θάνατοι",
             ["hero.kicker"] = "Άγιος της ημέρας",
+            ["names.title"] = "Γιορτάζουν σήμερα",
+            ["names.etymology"] = "Ετυμολογία των ονομάτων",
             ["hero.read"] = "Διάβασε τον βίο και τις πηγές →",
             ["hero.others"] = "Και {0} ακόμη: {1}",
             ["menu.settings"] = "Ρυθμίσεις",
