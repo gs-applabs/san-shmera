@@ -1,4 +1,4 @@
-using System.Drawing.Drawing2D;
+﻿using System.Drawing.Drawing2D;
 using System.Globalization;
 using Chronikologio.Core;
 using Opsis.UI;
@@ -93,6 +93,9 @@ public sealed class EventTile : Panel
         _year.Text = year;
         _title.Text = title;
         _fullText = text;
+        AccessibleName = (year.Length > 0 ? year + ": " : "") + title;
+        AccessibleDescription = text;
+        AccessibleRole = AccessibleRole.PushButton;
         _text.Text = Cut(text, 112);
         _source.Text = source;
         _title.Height = TextRenderer.MeasureText(title, _title.Font, new Size(TileWidth - 20, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.NoPadding).Height + 6;

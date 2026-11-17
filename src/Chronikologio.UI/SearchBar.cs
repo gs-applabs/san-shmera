@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Chronikologio.Core;
 
 namespace Chronikologio.UI;
@@ -85,7 +85,7 @@ public sealed class SearchBar : Panel
 
     public bool ListVisible => _list.Visible;
 
-    public void SetPlaceholder(string text) => _box.PlaceholderText = text;
+    public void SetPlaceholder(string text) { _box.PlaceholderText = text; _box.AccessibleName = text; AccessibleName = text; AccessibleRole = AccessibleRole.Grouping; }
 
     public void SetStore(DayStore store)
     {

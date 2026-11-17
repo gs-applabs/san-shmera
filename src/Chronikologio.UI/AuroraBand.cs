@@ -1,4 +1,4 @@
-using System.Drawing.Drawing2D;
+﻿using System.Drawing.Drawing2D;
 
 using Chronikologio.Core;
 
@@ -121,6 +121,8 @@ public sealed class YearTimeline : Control
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         Height = 66;
         Cursor = Cursors.Hand;
+        AccessibleRole = AccessibleRole.List;
+        AccessibleName = Loc.T("access.timeline");
     }
 
     public void SetMarks(IEnumerable<Mark> marks)
@@ -128,6 +130,7 @@ public sealed class YearTimeline : Control
         _marks.Clear();
         _marks.AddRange(marks.OrderBy(m => m.Year));
         _hover = -1;
+        AccessibleDescription = string.Join("; ", _marks.Take(12).Select(m => MarkText(m)));
         Invalidate();
     }
 

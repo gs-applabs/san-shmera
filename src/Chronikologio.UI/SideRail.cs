@@ -63,6 +63,9 @@ public sealed class SideRail : Control
     {
         _items.Clear();
         _items.AddRange(items);
+        AccessibleRole = AccessibleRole.ToolBar;
+        AccessibleName = BrandTitle;
+        AccessibleDescription = string.Join(", ", _items.Select(i => i.Label));   // the buttons are painted, so a screen reader gets their names here
         Invalidate();
     }
 

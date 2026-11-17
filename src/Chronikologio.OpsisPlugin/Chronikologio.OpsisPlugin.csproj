@@ -14,7 +14,7 @@
     <ProjectReference Include="../Chronikologio.UI/Chronikologio.UI.csproj" />
     <Reference Include="Opsis.UI"><HintPath>../../libs/Opsis.UI.dll</HintPath><Private>true</Private></Reference>
     <!-- decodes the WebP images; copied into the plugin folder (Opsis does not have it) -->
-    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.2.0" />
     <!-- The contract is shared with the host (Opsis loads it in its default context), so it is not copied next to the plugin. -->
     <Reference Include="OpsisNewsCrawler.Plugin.Abstractions">
       <HintPath>../../libs/OpsisNewsCrawler.Plugin.Abstractions.dll</HintPath>

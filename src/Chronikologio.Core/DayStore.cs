@@ -70,6 +70,7 @@ public sealed class DayStore
                     if (name.StartsWith("saints-syn", StringComparison.Ordinal) && region != "gr") continue;
                     if (name.StartsWith("en-", StringComparison.Ordinal)) store.AddEnglish(file, errors);
                     else if (name.StartsWith("lives", StringComparison.Ordinal)) store.AddLives(file, errors);
+                    else if (name.StartsWith("analysis", StringComparison.Ordinal)) store.AddAnalysis(file, errors);
                     else if (name.StartsWith("saints", StringComparison.Ordinal)) store.AddSaints(file, errors);
                     else if (name.StartsWith("events", StringComparison.Ordinal)) store.AddEvents(file, errors);
                     else if (name.StartsWith("verification", StringComparison.Ordinal)) store.AddChecks(file, errors);
@@ -83,6 +84,7 @@ public sealed class DayStore
             }
         store.ApplySupplements();
         store.ApplyLives();
+        store.ApplyAnalysis();
         store.RemoveRepeatedEvents();
         store.ApplyIds(dataRoot);
         store.ApplyChecks();
@@ -202,6 +204,7 @@ public sealed class DayStore
     // (for a life the third field after the date is empty and the Greek title is the beginning of the title of the commemoration; paragraphs are separated by " // ")
     private readonly Dictionary<string, (string Title, string Text)> _en = new(StringComparer.Ordinal);
     private readonly List<(int Month, int Day, string Prefix, string Life)> _enLives = new();
+    private readonly Dictionary<string, string> _enAnalysis = new(StringComparer.Ordinal);
 
     private void AddEnglish(string file, List<string> errors)
     {
@@ -217,6 +220,7 @@ public sealed class DayStore
                 errors.Add($"{file}:{number}: bad English line");
                 continue;
             }
+            if (f[0] == "analysis") { _enAnalysis[EntryIds.Key("event", month, day, f[2].Length > 0 ? int.Parse(f[2], System.Globalization.CultureInfo.InvariantCulture) : null, f[3].Trim())] = f[5].Trim().Replace(" // ", "\n\n"); continue; }
             if (f[0] == "life") { _enLives.Add((month, day, f[3].Trim(), f[5].Trim().Replace(" // ", "\n\n"))); continue; }
             int? year = f[2].Length > 0 ? int.Parse(f[2], System.Globalization.CultureInfo.InvariantCulture) : null;
             _en[EntryIds.Key(f[0], month, day, year, f[3].Trim())] = (f[4].Trim(), f[5].Trim());
@@ -228,7 +232,7 @@ public sealed class DayStore
     /// <summary>The day with the English texts of its entries, where the database has them (the others stay in Greek).</summary>
     private DayView InEnglish(DayView v)
     {
-        if (_en.Count == 0 && _enLives.Count == 0) return v;
+        if (_en.Count == 0 && _enLives.Count == 0 && _enAnalysis.Count == 0) return v;
         string T(string kind, int? year, string title, out string text)
         {
             text = "";
@@ -243,7 +247,13 @@ public sealed class DayStore
             var summary = text.Length > 0 ? text : c.Summary.StartsWith("Η μνήμη αναφέρεται στον Μέγα Συναξαριστή", StringComparison.Ordinal) ? "The commemoration is mentioned in the Megas Synaxaristis for this day. Its life has not been written yet." : c.Summary;
             return c with { Title = title, Summary = summary, Details = life ?? (c.Details is not null && ContainsGreek(c.Details) ? null : c.Details) };
         }).ToList();
-        var events = v.Events.Select(e => { var title = T("event", e.Year, e.Title, out var text); return text.Length > 0 || title != e.Title ? e with { Title = title, Summary = text.Length > 0 ? text : e.Summary } : e; }).ToList();
+        var events = v.Events.Select(e =>
+        {
+            var title = T("event", e.Year, e.Title, out var text);
+            // the analysis is Greek text: in English it is shown only where the English one exists
+            var analysis = _enAnalysis.TryGetValue(EntryIds.Key("event", v.Month, v.Day, e.Year, e.Title), out var a) ? a : (e.Details is not null && ContainsGreek(e.Details) ? null : e.Details);
+            return e with { Title = title, Summary = text.Length > 0 ? text : e.Summary, Details = analysis };
+        }).ToList();
         List<Person> People(IReadOnlyList<Person> list, string kind) => list.Select(p => { var name = T(kind, p.Year, p.Name, out var text); return text.Length > 0 || name != p.Name ? p with { Name = name, Description = text.Length > 0 ? text : p.Description } : p; }).ToList();
         return v with { Commemorations = commemorations, Events = events, Births = People(v.People, "birth"), Deaths = People(v.DeathList, "death") };
     }
@@ -269,6 +279,42 @@ public sealed class DayStore
                 continue;
             }
             _lives.Add((month, day, f[1].Trim(), f[2].Trim().Replace(" // ", "\n\n")));
+        }
+    }
+
+    private readonly List<(int Month, int Day, int? Year, string Title, string Text)> _analysis = new();
+
+    /// <summary>
+    /// Reads the analyses of the historical events (analysis*.tsv): "MM-DD|year|exact title of the event|analysis", paragraphs separated by " // ". The analysis is written from
+    /// scratch and is shown in the full text of the event; the summary stays the short text. A bad line is reported and skipped.
+    /// </summary>
+    private void AddAnalysis(string file, List<string> errors)
+    {
+        var number = 0;
+        foreach (var line in File.ReadLines(file))
+        {
+            number++;
+            if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#')) continue;
+            var f = line.Split('|');
+            if (f.Length != 4 || f[0].Length != 5 || f[0][2] != '-' || !int.TryParse(f[0][..2], out var month) || !int.TryParse(f[0][3..], out var day)
+                || month is < 1 or > 12 || day < 1 || day > DateTime.DaysInMonth(2024, month) || (f[1].Length > 0 && !int.TryParse(f[1], out _))
+                || string.IsNullOrWhiteSpace(f[2]) || string.IsNullOrWhiteSpace(f[3]))
+            {
+                errors.Add($"{file}:{number}: bad analysis line");
+                continue;
+            }
+            int? year = f[1].Length > 0 ? int.Parse(f[1], System.Globalization.CultureInfo.InvariantCulture) : null;
+            _analysis.Add((month, day, year, f[2].Trim(), f[3].Trim().Replace(" // ", "\n\n")));
+        }
+    }
+
+    private void ApplyAnalysis()
+    {
+        foreach (var (month, day, year, title, text) in _analysis)
+        {
+            if (!_days.TryGetValue((month, day), out var slot)) continue;
+            for (var i = 0; i < slot.E.Count; i++)
+                if (slot.E[i].Year == year && slot.E[i].Title == title && string.IsNullOrWhiteSpace(slot.E[i].Details)) slot.E[i] = slot.E[i] with { Details = text };
         }
     }
 

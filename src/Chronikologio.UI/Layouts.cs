@@ -179,7 +179,7 @@ public sealed class DayHeader : Panel
         ApplyText();
     }
 
-    public void ApplyText() => _today.Text = Loc.T("btn.today");
+    public void ApplyText() { _today.Text = Loc.T("btn.today"); _today.AccessibleName = _today.Text; }
 
     /// <summary>Puts the search of the window in the first row, just left of the Today button.</summary>
     public void AttachSearch(Control search)
