@@ -7,6 +7,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  ChronNet: "10.0"   # the workflows stay on the .NET 10 SDK of the runners until .NET 11 is offered there
+
 permissions:
   contents: read
 

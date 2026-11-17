@@ -1,0 +1,7 @@
+<Project>
+  <!-- The .NET version of every project in one place. The default is 11.0 (Opsis moves to .NET 11 too, and the plugin must run on the same runtime as its host);
+       set the environment variable ChronNet=10.0 (or pass -p:ChronNet=10.0) to build for .NET 10 again. The .bat files read the same variable. -->
+  <PropertyGroup>
+    <ChronNet Condition="'$(ChronNet)' == ''">11.0</ChronNet>
+  </PropertyGroup>
+</Project>

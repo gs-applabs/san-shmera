@@ -4,6 +4,8 @@ rem (News Crawler: plugin contract and the "Σαν σήμερα" feed slot; Appe
 rem The Opsis repositories are looked for next to this folder; set OPSIS_ROOT to use another folder.
 setlocal
 chcp 65001 >nul
+if "%CHRON_NET%"=="" set "CHRON_NET=11.0"
+set "ChronNet=%CHRON_NET%"
 set "HERE=%~dp0"
 if "%OPSIS_ROOT%"=="" set "OPSIS_ROOT=%HERE%..\"
 set FAILED=0

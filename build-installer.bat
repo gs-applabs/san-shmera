@@ -2,9 +2,12 @@
 rem Runs the tests, publishes the app and the Opsis plugin, and compiles the installer with Inno Setup.
 rem Result: Output\ChronikologioSetup.exe (+ .sha256)
 rem Usage:  build-installer.bat [skip-tests]
-rem Needs:  .NET 10 SDK and Inno Setup 6 or 7 (ISCC.exe).
+rem Needs:  .NET SDK (10 or 11) and Inno Setup 6 or 7 (ISCC.exe).
+rem .NET version: set CHRON_NET=10.0 before running to build for .NET 10 (default 11.0).
 setlocal
 cd /d "%~dp0"
+if "%CHRON_NET%"=="" set "CHRON_NET=11.0"
+set "ChronNet=%CHRON_NET%"
 
 if /i not "%~1"=="skip-tests" (
   echo [1/4] Running tests...
@@ -22,7 +25,7 @@ if errorlevel 1 goto :fail
 echo [3/4] Building the Opsis plugin...
 dotnet build src\Chronikologio.OpsisPlugin\Chronikologio.OpsisPlugin.csproj -c Release -nologo -v q
 if errorlevel 1 goto :fail
-xcopy /e /i /y /q "src\Chronikologio.OpsisPlugin\bin\Release\net10.0-windows\*" "dist\plugin\" >nul
+xcopy /e /i /y /q "src\Chronikologio.OpsisPlugin\bin\Release\net%CHRON_NET%-windows\*" "dist\plugin\" >nul
 if errorlevel 1 goto :fail
 rem The contract DLL belongs to Opsis (it is loaded from Opsis, never from the plugin folder).
 if exist "dist\plugin\OpsisNewsCrawler.Plugin.Abstractions.dll" del "dist\plugin\OpsisNewsCrawler.Plugin.Abstractions.dll"
