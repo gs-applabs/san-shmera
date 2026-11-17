@@ -1,7 +1,5 @@
 using System.Text.RegularExpressions;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Webp;
-using SixLabors.ImageSharp.Processing;
+using SkiaSharp;
 
 // Converts the photographs and icons of data\images to WebP (smaller files, same look) and rewrites the references in the data files.
 // Usage: dotnet run --project tools/ImageConvert -c Release -- <data folder> [--max 900] [--quality 80]
@@ -17,7 +15,6 @@ for (var i = 1; i < args.Length - 1; i++)
     if (args[i] == "--quality") quality = int.Parse(args[i + 1]);
 }
 var images = Path.Combine(data, "images");
-var encoder = new WebpEncoder { Quality = quality, FileFormat = WebpFileFormatType.Lossy };
 var renames = new Dictionary<string, string>(StringComparer.Ordinal);
 long before = 0, after = 0;
 
@@ -29,13 +26,20 @@ foreach (var file in Directory.EnumerateFiles(images, "*.*", SearchOption.AllDir
     try
     {
         before += new FileInfo(file).Length;
-        using (var image = Image.Load(file))
+        using (var image = SKBitmap.Decode(file) ?? throw new InvalidDataException("cannot read the image"))
         {
+            var bitmap = image;
             if (Math.Max(image.Width, image.Height) > max)
-                image.Mutate(c => c.Resize(new ResizeOptions { Size = new Size(max, max), Mode = ResizeMode.Max }));
-            image.Save(target, encoder);
+            {
+                var scale = max / (double)Math.Max(image.Width, image.Height);
+                bitmap = image.Resize(new SKImageInfo(Math.Max(1, (int)Math.Round(image.Width * scale)), Math.Max(1, (int)Math.Round(image.Height * scale))), new SKSamplingOptions(SKCubicResampler.Mitchell));
+            }
+            using var picture = SKImage.FromBitmap(bitmap);
+            using var encoded = picture.Encode(SKEncodedImageFormat.Webp, quality) ?? throw new InvalidDataException("cannot write WebP");
+            File.WriteAllBytes(target, encoded.ToArray());
+            if (!ReferenceEquals(bitmap, image)) bitmap.Dispose();
         }
-        using (var check = Image.Load(target)) { if (check.Width < 1 || check.Height < 1) throw new InvalidDataException("empty image"); }
+        using (var check = SKBitmap.Decode(target)) { if (check is null || check.Width < 1 || check.Height < 1) throw new InvalidDataException("empty image"); }
         after += new FileInfo(target).Length;
         File.Delete(file);
         renames[Path.GetRelativePath(images, file).Replace('\\', '/')] = Path.GetRelativePath(images, target).Replace('\\', '/');

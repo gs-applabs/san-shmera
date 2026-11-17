@@ -1,6 +1,6 @@
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
-using SixLabors.ImageSharp.PixelFormats;
+using SkiaSharp;
 
 namespace Chronikologio.UI;
 
@@ -32,20 +32,26 @@ public static class ImageLoader
     {
         try
         {
-            using var image = SixLabors.ImageSharp.Image.Load<Bgra32>(bytes);
-            var pixels = new byte[image.Width * image.Height * 4];
-            image.CopyPixelDataTo(pixels);
-            var bitmap = new Bitmap(image.Width, image.Height, PixelFormat.Format32bppArgb);
-            var data = bitmap.LockBits(new Rectangle(0, 0, image.Width, image.Height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+            using var skData = SKData.CreateCopy(bytes);
+            using var codec = SKCodec.Create(skData) ?? throw new ArgumentException("damaged WebP image");
+            var info = new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Bgra8888, SKAlphaType.Unpremul);
+            using var skia = SKBitmap.Decode(codec, info) ?? throw new ArgumentException("damaged WebP image");
+            var bitmap = new Bitmap(info.Width, info.Height, PixelFormat.Format32bppArgb);
+            var data = bitmap.LockBits(new Rectangle(0, 0, info.Width, info.Height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
             try
             {
-                for (var y = 0; y < image.Height; y++)
-                    Marshal.Copy(pixels, y * image.Width * 4, data.Scan0 + y * data.Stride, image.Width * 4);
+                var source = skia.GetPixels();
+                var row = new byte[info.Width * 4];
+                for (var y = 0; y < info.Height; y++)
+                {
+                    Marshal.Copy(source + y * skia.RowBytes, row, 0, row.Length);
+                    Marshal.Copy(row, 0, data.Scan0 + y * data.Stride, row.Length);
+                }
             }
             finally { bitmap.UnlockBits(data); }
             return bitmap;
         }
-        catch (Exception ex) when (ex is SixLabors.ImageSharp.ImageFormatException or InvalidOperationException or NotSupportedException)
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or IOException)
         {
             throw new ArgumentException("damaged WebP image: " + ex.Message, ex);
         }

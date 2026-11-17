@@ -11,7 +11,7 @@ The images come from Wikimedia Commons and have a free licence (public domain, C
 The data rest on public sources: the Megas Synaxaristis (synaxarion.gr) for the memories of the saints and the Greek Wikipedia (el.wikipedia.org) for names and years. Only the facts are taken from them; the texts of the app do not copy texts of other websites.
 
 THIRD-PARTY SOFTWARE
-The app uses the SixLabors.ImageSharp library (Six Labors Split License) to read WebP images.
+The app uses the SkiaSharp library (MIT licence, with Google Skia, BSD licence) to read WebP images.
 
 MIT License
 

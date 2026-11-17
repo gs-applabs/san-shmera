@@ -16,7 +16,7 @@
 
 ## Open points
 - The installer and executables are **not code-signed**: Windows SmartScreen will warn; verify the published SHA-256 in the `.sha256` file of each release.
-- The image decoder (SixLabors.ImageSharp 3.1.12) has published advisories. The app uses it only for the images it ships itself, never for files from the network or the user.
+- The image decoder is SkiaSharp (MIT licence), used only for the images the app ships itself, never for files from the network or the user. ImageSharp was replaced because its 3.1.12 release has published advisories and its newer releases need a paid licence at build time.
 
 ## Reporting
 Open a private security advisory on GitHub or an issue without sensitive details.
