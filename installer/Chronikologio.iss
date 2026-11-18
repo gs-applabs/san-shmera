@@ -37,7 +37,7 @@ UninstallDisplayName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExe}
 SetupIconFile=..\src\Chronikologio.Windows\chronikologio.ico
 ; the pictures of the pages (made from the icon by tools\installer\Make-WizardImages.ps1)
-WizardStyle=modern
+WizardStyle=modern dark
 WizardImageFile=assets\wizard-large.bmp
 WizardSmallImageFile=assets\wizard-small.bmp
 ; The running programs that hold the files are closed by the [Code] section below (Opsis loads the plugins into its own process), without a question.
