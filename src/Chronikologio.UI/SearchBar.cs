@@ -26,7 +26,7 @@ public sealed class SearchBar : Panel
         }
     }
 
-    private readonly TextBox _box = new() { BorderStyle = BorderStyle.FixedSingle, Width = 240 };
+    private readonly TextBox _box = new() { BorderStyle = BorderStyle.None, Width = 226 };
     private readonly Magnifier _icon = new();
     private readonly ListBox _list = new() { Visible = false, BorderStyle = BorderStyle.FixedSingle, IntegralHeight = false, DrawMode = DrawMode.OwnerDrawFixed, ItemHeight = 28, TabStop = false };
     private readonly System.Windows.Forms.Timer _hide = new() { Interval = 180 };
@@ -42,6 +42,10 @@ public sealed class SearchBar : Panel
         Dock = DockStyle.Right;
         Width = 290;
         Height = 44;
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        _box.Enter += (_, _) => Invalidate();
+        _box.Leave += (_, _) => Invalidate();
+        _icon.BackColor = Color.Transparent;
         Controls.Add(_icon);
         Controls.Add(_box);
         Resize += (_, _) => Arrange();
@@ -61,10 +65,33 @@ public sealed class SearchBar : Panel
         HandleCreated += (_, _) => AttachList();
     }
 
+    private Rectangle Pill => new(4, Math.Max(0, (Height - 32) / 2), Math.Max(60, Width - 12), 32);
+
     private void Arrange()
     {
-        _icon.Location = new Point(4, Math.Max(0, (Height - _icon.Height) / 2));
-        _box.Location = new Point(_icon.Right, Math.Max(0, (Height - _box.Height) / 2));
+        var pill = Pill;
+        _icon.Location = new Point(pill.X + 6, Math.Max(0, (Height - _icon.Height) / 2));
+        _box.Width = Math.Max(40, pill.Right - _icon.Right - 12);
+        _box.Location = new Point(_icon.Right + 2, Math.Max(0, (Height - _box.Height) / 2));
+    }
+
+    // a rounded field in the style of the rest of the window; the border takes the accent colour while the text has the focus
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        var palette = ChronikologioTheme.Palette;
+        var g = e.Graphics;
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        var pill = Pill;
+        using var path = new System.Drawing.Drawing2D.GraphicsPath();
+        var d = pill.Height;
+        path.AddArc(pill.X, pill.Y, d, d, 90, 180);
+        path.AddArc(pill.Right - d - 1, pill.Y, d, d, 270, 180);
+        path.CloseFigure();
+        var fill = palette.Surface;
+        using (var brush = new SolidBrush(fill)) g.FillPath(brush, path);
+        using (var pen = new Pen(_box.Focused ? palette.Accent : Color.FromArgb(70, palette.Text), _box.Focused ? 1.6f : 1f)) g.DrawPath(pen, path);
+        if (_box.BackColor != fill) _box.BackColor = fill;
+        if (_box.ForeColor != palette.Text) _box.ForeColor = palette.Text;
     }
 
     private void AttachList()

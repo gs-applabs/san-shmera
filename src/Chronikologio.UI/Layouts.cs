@@ -195,9 +195,12 @@ public sealed class DayHeader : Panel
     {
         _date.Text = date.ToString("dddd d MMMM yyyy", Loc.Culture);
         _date.Width = TextRenderer.MeasureText(_date.Text, _date.Font).Width + 24;   // as wide as the date, so the rest of the row is left to the old calendar date
-        _old.Text = OldCalendar.Note(date);
+        // the old-calendar note has no room in the first row (the search and the Today button need it): it goes to the second row, after the holiday
+        _old.Text = ""; _old.Visible = false;
+        var oldNote = OldCalendar.Note(date);
         var holiday = string.Join(" · ", day.HolidayList.Select(Holidays.Line));
-        _fast.Text = holiday.Length > 0 ? holiday : day.Fasting ?? "";
+        var lineOne = holiday.Length > 0 ? holiday : day.Fasting ?? "";
+        _fast.Text = lineOne.Length > 0 && oldNote.Length > 0 ? lineOne + "  ·  " + oldNote : lineOne.Length > 0 ? lineOne : oldNote;
         _tip.SetToolTip(_fast, _fast.Text);
         _flag.SetRegion(region);
     }
