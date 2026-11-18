@@ -42,7 +42,7 @@ public static class TextDialog
         form.KeyPreview = true;
         form.KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) form.Close(); };
         if (form.IsHandleCreated || true) TitleBar.Apply(form.Handle, p.IsDark);
-        form.ShowDialog(owner);
+        AppIcon.Inherit(form, owner); form.ShowDialog(owner);
     }
 
     /// <summary>The version history as plain text, newest first.</summary>

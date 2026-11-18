@@ -241,6 +241,6 @@ public sealed class CalendarPanel : UserControl
             form.Controls.Add(strip);
         }
         view.ShowDay(_store, _grid.Selected, full: true);
-        form.ShowDialog(FindForm());
+        AppIcon.Inherit(form, FindForm()); form.ShowDialog(FindForm());
     }
 }

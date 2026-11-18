@@ -201,7 +201,7 @@ public sealed class PhotoDialog : Form
     public static void ShowFor(IWin32Window? owner, Image image, ImageRef? info)
     {
         using var dialog = new PhotoDialog(image, info);
-        dialog.ShowDialog(owner);
+        AppIcon.Inherit(dialog, owner); dialog.ShowDialog(owner);
     }
 }
 
@@ -226,7 +226,7 @@ public sealed class LifeDialog : Form
     public static void ShowFor(IWin32Window? owner, DayStore store, DateOnly date)
     {
         using var dialog = new LifeDialog(store, date);
-        dialog.ShowDialog(owner);
+        AppIcon.Inherit(dialog, owner); dialog.ShowDialog(owner);
     }
 }
 

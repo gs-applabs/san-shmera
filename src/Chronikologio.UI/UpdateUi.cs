@@ -40,7 +40,7 @@ public static class UpdateUi
         form.Controls.Add(buttons);
         form.Controls.Add(head);
         TitleBar.Apply(form.Handle, p.IsDark);
-        form.ShowDialog(owner);
+        AppIcon.Inherit(form, owner); form.ShowDialog(owner);
         return choice;
     }
 

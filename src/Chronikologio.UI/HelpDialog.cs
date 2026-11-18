@@ -163,6 +163,6 @@ public sealed class HelpDialog : Form
     public static void ShowFor(IWin32Window? owner, int tab)
     {
         using var dialog = new HelpDialog { SelectedTab = tab };
-        dialog.ShowDialog(owner);
+        AppIcon.Inherit(dialog, owner); dialog.ShowDialog(owner);
     }
 }

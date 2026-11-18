@@ -82,7 +82,7 @@ public sealed class SettingsDialog : Form
 
     private Panel AddCard(string heading, params (Label Label, Control Control)[] rows)
     {
-        var card = new Panel { Height = 40 + rows.Length * 46, Padding = new Padding(16, 12, 16, 8), Tag = "card" };
+        var card = new Panel { Height = 28 + 12 + 10 + rows.Length * 46 + 4, Padding = new Padding(16, 12, 16, 10), Tag = "card" };   // the heading, the padding and the full height of every row (the combo boxes were cut at the bottom)
         var head = new Label { Text = heading, AutoSize = false, Dock = DockStyle.Top, Height = 28, Font = new Font("Segoe UI", 11f, FontStyle.Bold) };
         var table = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = rows.Length };
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160));
@@ -163,7 +163,7 @@ public sealed class SettingsDialog : Form
     public static void ShowFor(MainWindow owner)
     {
         using var dialog = new SettingsDialog(owner);
-        dialog.ShowDialog(owner);
+        AppIcon.Inherit(dialog, owner); dialog.ShowDialog(owner);
     }
 
     // test helpers
