@@ -8,6 +8,11 @@ public static class Changelog
 {
     public static readonly IReadOnlyList<ChangelogEntry> Entries = new[]
     {
+        new ChangelogEntry("1.0.1", "2026-11-18", new[]
+        {
+            "Νέο συμβόλαιο plugin 1.0.0.0 του Opsis: το plugin δηλώνει από πού ενημερώνεται και παίρνει τη γλώσσα και την ένδειξη «ο Opsis διαχειρίζεται τις ενημερώσεις» από τον Opsis. Απαιτεί Opsis 2.6.0.",
+            "Δεν άλλαξαν δεδομένα ούτε φωτογραφίες.",
+        }),
         new ChangelogEntry("1.0.0", "2026-11-11", new[]
         {
             "Η εφαρμογή έχει πλέον μία οθόνη, την Ημέρα. Καταργήθηκαν οι διατάξεις Κάρτες, Ροή και Καρτέλες, και μαζί τους το μενού Διάταξη και το Ctrl+L.",

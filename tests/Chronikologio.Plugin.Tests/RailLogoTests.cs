@@ -15,7 +15,7 @@ public class RailLogoTests
         Directory.CreateDirectory(dir);
         ChronikologioTheme.Set("dark");
         using var rail = new SideRail { Height = 140 };
-        rail.BrandTitle = "Χρονικολόγιο"; rail.BrandSub = "Ιστορικό ημερολόγιο"; rail.BrandVersion = "v1.0.0";
+        rail.BrandTitle = "Χρονικολόγιο"; rail.BrandSub = "Ιστορικό ημερολόγιο"; rail.BrandVersion = "v1.0.1";
         using var sheet = new Bitmap(SideRail.RailWidth * 8, 140);
         using var g = Graphics.FromImage(sheet);
         for (var i = 0; i < 8; i++)

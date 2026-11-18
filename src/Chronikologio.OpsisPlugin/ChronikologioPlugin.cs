@@ -7,12 +7,25 @@ namespace Chronikologio.OpsisPlugin;
 /// <summary>
 /// Opsis plugin: offers the calendar widget (replacing the built-in one) and the "Σαν σήμερα" feed for the bars of the News Crawler.
 /// </summary>
-public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidgetProvider
+public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidgetProvider, IPluginUpdateSource, IPluginHostSettingsAware
 {
     public const string FeedKey = "san-simera";
 
     private DailySnapshotService? _service;
     private string _language = "el";
+
+    /// <summary>True when Opsis itself manages the updates of its plugins: the plugin then runs no update check of its own and shows no update card.</summary>
+    public bool HostManagesUpdates { get; private set; }
+
+    // Contract 1.0.0.0: where the update button of Opsis looks for new versions (the release asset is a zip of the plugin folder).
+    public PluginUpdateSource GetUpdateSource() => new("gs-applabs/san-shmera", "Chronikologio-Plugin.zip");
+
+    // Contract 1.0.0.0: the settings of the host. The interface language follows Opsis (the language of the contents, gr/cy x el/en, stays the plugin's own).
+    public void SetHostSettings(PluginHostSettings settings)
+    {
+        HostManagesUpdates = settings.HostManagesUpdates;
+        if (!string.IsNullOrEmpty(settings.Language)) SetLanguage(settings.Language);
+    }
 
     public string Id => "chronikologio";
     public string Name => "Χρονικολόγιο — Timeline Calendar";
