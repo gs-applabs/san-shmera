@@ -23,10 +23,13 @@ dotnet publish src\Chronikologio.Windows\Chronikologio.Windows.csproj -c Release
 if errorlevel 1 goto :fail
 
 echo [3/4] Building the Opsis plugin...
+if exist "src\Chronikologio.OpsisPlugin\bin\Release" rmdir /s /q "src\Chronikologio.OpsisPlugin\bin\Release"
 dotnet build src\Chronikologio.OpsisPlugin\Chronikologio.OpsisPlugin.csproj -c Release -nologo -v q
 if errorlevel 1 goto :fail
 xcopy /e /i /y /q "src\Chronikologio.OpsisPlugin\bin\Release\net%CHRON_NET%-windows\*" "dist\plugin\" >nul
 if errorlevel 1 goto :fail
+rem Debug symbols (the native library alone has about 95 MB of them) are not shipped.
+del /s /q "dist\app\*.pdb" "dist\plugin\*.pdb" >nul 2>nul
 rem The contract DLL belongs to Opsis (it is loaded from Opsis, never from the plugin folder).
 if exist "dist\plugin\OpsisNewsCrawler.Plugin.Abstractions.dll" del "dist\plugin\OpsisNewsCrawler.Plugin.Abstractions.dll"
 

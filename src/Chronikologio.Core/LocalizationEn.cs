@@ -58,7 +58,7 @@ internal static class LocalizationEn
         ["settings.theme"] = "Theme",
         ["brand.title"] = "Chronikologio",
         ["access.timeline"] = "Timeline of the events of the day",
-        ["brand.sub"] = "On this day",
+        ["brand.sub"] = "Historical calendar",
         ["settings.group.updates"] = "Updates",
         ["settings.menubar"] = "Show the menu bar (Ctrl+M)",
         ["settings.region"] = "Country and calendar",

@@ -89,7 +89,7 @@ public static class Loc
             ["settings.theme"] = "Θέμα",
             ["brand.title"] = "Χρονικολόγιο",
             ["access.timeline"] = "Λωρίδα χρόνου των γεγονότων της ημέρας",
-            ["brand.sub"] = "Σαν σήμερα",
+            ["brand.sub"] = "Ιστορικό ημερολόγιο",
             ["settings.group.updates"] = "Ενημερώσεις",
             ["settings.menubar"] = "Εμφάνιση της γραμμής μενού (Ctrl+M)",
             ["settings.region"] = "Χώρα και εορτολόγιο",
