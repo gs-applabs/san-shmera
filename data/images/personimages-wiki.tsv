@@ -1,4 +1,4 @@
-﻿# MM-DD|b (birth) or d (death)|year|name|file|caption|creator|license|sourceUrl   (portraits from Wikimedia Commons, free licences only; made by tools\wikipedia\Get-PersonImages.ps1)
+# MM-DD|b (birth) or d (death)|year|name|file|caption|creator|license|sourceUrl   (portraits from Wikimedia Commons, free licences only; made by tools\wikipedia\Get-PersonImages.ps1)
 08-04|b|1961|Μπαράκ Ομπάμα|photos/people/08-04-b-1961-aa177f.webp|Μπαράκ Ομπάμα|Official White House Photo by Pete Souza|Public Domain|https://commons.wikimedia.org/wiki/File:President_Barack_Obama.jpg
 06-14|b|1946|Ντόναλντ Τραμπ|photos/people/06-14-b-1946-3855da.webp|Ντόναλντ Τραμπ|Daniel Torok|Public Domain|https://commons.wikimedia.org/wiki/File:Official_Presidential_Portrait_of_President_Donald_J._Trump_(2025).jpg
 05-03|d|1616|Ουίλλιαμ Σαίξπηρ|photos/people/05-03-d-1616-124d24.webp|Ουίλλιαμ Σαίξπηρ|Attributed to John Taylor|Public Domain|https://commons.wikimedia.org/wiki/File:William_Shakespeare_by_John_Taylor,_edited.jpg
@@ -2120,7 +2120,7 @@
 01-22|d|1919|Καρλ Λάρσον|photos/people/01-22-d-1919-b3918d.webp|Καρλ Λάρσον|Carl Larsson|Public Domain|https://commons.wikimedia.org/wiki/File:Carl_Larsson_selfportrait_1891.png
 04-13|d|1956|Έμιλ Νόλντε|photos/people/04-13-d-1956-000dde.webp|Έμιλ Νόλντε|Minya Diez-Dührkoop (* 21. Juni 1873; † 17. November 1929), deutsche Fotografin|Public Domain|https://commons.wikimedia.org/wiki/File:WP_Emil_Nolde.jpg
 11-11|d|1976|Αλεξάντερ Κάλντερ|photos/people/11-11-d-1976-018018.webp|Αλεξάντερ Κάλντερ|Josepclopesbosc|CC BY 3.0|https://commons.wikimedia.org/wiki/File:Alexander_Calder_1968.jpg
-01-03|d|1907|Ρέι Μιλάντ|photos/people/01-03-d-1907-717ca4.webp|Ρέι Μιλάντ|Rogers & Cowan/Barkin, Herman & Associates, a public relations firm. In the 1950s and 1960s, the sponsors, studios or networks sometimes employed public relations firms to distribute their publicity material.|Public Domain|https://commons.wikimedia.org/wiki/File:Ray_Milland_Markham_1959.JPG
+01-03|b|1907|Ρέι Μιλάντ|photos/people/01-03-b-1907-717ca4.webp|Ρέι Μιλάντ|Rogers & Cowan / Barkin, Herman & Associates (public relations firms; publicity photograph)|Public Domain|https://commons.wikimedia.org/wiki/File:Ray_Milland_Markham_1959.JPG
 02-12|d|1949|Χασάν αλ-Μπάννα|photos/people/02-12-d-1949-7760a1.webp|Χασάν αλ-Μπάννα|Unknown authorUnknown author|Public Domain|https://commons.wikimedia.org/wiki/File:Hassan_al-Banna.jpg
 02-05|d|1818|Κάρολος ΙΓ'|photos/people/02-05-d-1818-c0ea89.webp|Κάρολος ΙΓ'|Carl Frederik von Breda|Public Domain|https://commons.wikimedia.org/wiki/File:Charles_XIII_of_Sweden.jpg
 11-21|b|1935|Φαϊρούζ|photos/people/11-21-b-1935-744772.webp|Φαϊρούζ|photographer unknown, published by AP|Public Domain|https://commons.wikimedia.org/wiki/File:Fairuz_1971.jpg
