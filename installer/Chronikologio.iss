@@ -168,9 +168,28 @@ begin
   Log('Opsis folder: "' + OpsisDir + '", protected: ' + IntToStr(Ord(OpsisProtected)) + ', contract with feeds: ' + IntToStr(Ord(OpsisContractOk)));
 end;
 
+{ The program is framework-dependent: it needs the .NET 11 Desktop Runtime (x64). }
+function DotNetDesktop11Present: Boolean;
+var
+  FindRec: TFindRec;
+begin
+  Result := False;
+  if FindFirst(ExpandConstant('{commonpf64}\dotnet\shared\Microsoft.WindowsDesktop.App\11.*'), FindRec) then
+  begin
+    Result := True;
+    FindClose(FindRec);
+  end;
+end;
+
 function InitializeSetup: Boolean;
+var
+  Code: Integer;
 begin
   Result := True;
+  if not DotNetDesktop11Present then
+    if SuppressibleMsgBox('Το Χρονικολόγιο απαιτεί το .NET 11 Desktop Runtime (x64), που δεν βρέθηκε. Να ανοίξει η σελίδα λήψης; Η εγκατάσταση συνεχίζεται, αλλά το πρόγραμμα δεν θα ξεκινήσει χωρίς αυτό.' + #13#10 +
+      'Chronikologio needs the .NET 11 Desktop Runtime (x64), which was not found. Open the download page? Setup continues, but the program will not start without it.', mbConfirmation, MB_YESNO, IDNO) = IDYES then
+      ShellExec('open', 'https://dotnet.microsoft.com/download/dotnet/11.0', '', '', SW_SHOWNORMAL, ewNoWait, Code);
   FindOpsis;
 end;
 

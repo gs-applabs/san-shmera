@@ -71,6 +71,7 @@ public sealed class DayStore
                     if (name.StartsWith("en-", StringComparison.Ordinal)) store.AddEnglish(file, errors);
                     else if (name.StartsWith("lives", StringComparison.Ordinal)) store.AddLives(file, errors);
                     else if (name.StartsWith("analysis", StringComparison.Ordinal)) store.AddAnalysis(file, errors);
+                    else if (name.StartsWith("bios", StringComparison.Ordinal)) store.AddBios(file, errors);
                     else if (name.StartsWith("saints", StringComparison.Ordinal)) store.AddSaints(file, errors);
                     else if (name.StartsWith("events", StringComparison.Ordinal)) store.AddEvents(file, errors);
                     else if (name.StartsWith("verification", StringComparison.Ordinal)) store.AddChecks(file, errors);
@@ -85,6 +86,7 @@ public sealed class DayStore
         store.ApplySupplements();
         store.ApplyLives();
         store.ApplyAnalysis();
+        store.ApplyBios();
         store.RemoveRepeatedEvents();
         store.ApplyIds(dataRoot);
         store.ApplyChecks();
@@ -254,7 +256,7 @@ public sealed class DayStore
             var analysis = _enAnalysis.TryGetValue(EntryIds.Key("event", v.Month, v.Day, e.Year, e.Title), out var a) ? a : (e.Details is not null && ContainsGreek(e.Details) ? null : e.Details);
             return e with { Title = title, Summary = text.Length > 0 ? text : e.Summary, Details = analysis };
         }).ToList();
-        List<Person> People(IReadOnlyList<Person> list, string kind) => list.Select(p => { var name = T(kind, p.Year, p.Name, out var text); return text.Length > 0 || name != p.Name ? p with { Name = name, Description = text.Length > 0 ? text : p.Description } : p; }).ToList();
+        List<Person> People(IReadOnlyList<Person> list, string kind) => list.Select(p => { var name = T(kind, p.Year, p.Name, out var text); var details = p.Details is not null && ContainsGreek(p.Details) ? null : p.Details; return text.Length > 0 || name != p.Name || details != p.Details ? p with { Name = name, Description = text.Length > 0 ? text : p.Description, Details = details } : p; }).ToList();
         return v with { Commemorations = commemorations, Events = events, Births = People(v.People, "birth"), Deaths = People(v.DeathList, "death") };
     }
 
@@ -305,6 +307,42 @@ public sealed class DayStore
             }
             int? year = f[1].Length > 0 ? int.Parse(f[1], System.Globalization.CultureInfo.InvariantCulture) : null;
             _analysis.Add((month, day, year, f[2].Trim(), f[3].Trim().Replace(" // ", "\n\n")));
+        }
+    }
+
+    private readonly List<(int Month, int Day, bool Death, int Year, string Name, string Text)> _bios = new();
+
+    /// <summary>
+    /// Reads the short biographies of the people (bios*.tsv): "MM-DD|b or d|year|name|text", b for a birth and d for a death, the name being the one of the births or deaths file.
+    /// Paragraphs are separated by " // ". The text is written from scratch and is shown in the full text of the person. A bad line is reported and skipped.
+    /// </summary>
+    private void AddBios(string file, List<string> errors)
+    {
+        var number = 0;
+        foreach (var line in File.ReadLines(file))
+        {
+            number++;
+            if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#')) continue;
+            var f = line.Split('|');
+            if (f.Length != 5 || f[0].Length != 5 || f[0][2] != '-' || !int.TryParse(f[0][..2], out var month) || !int.TryParse(f[0][3..], out var day)
+                || month is < 1 or > 12 || day < 1 || day > DateTime.DaysInMonth(2024, month) || f[1] is not ("b" or "d") || !int.TryParse(f[2], out var year)
+                || string.IsNullOrWhiteSpace(f[3]) || string.IsNullOrWhiteSpace(f[4]))
+            {
+                errors.Add($"{file}:{number}: bad biography line");
+                continue;
+            }
+            _bios.Add((month, day, f[1] == "d", year, f[3].Trim(), f[4].Trim().Replace(" // ", "\n\n")));
+        }
+    }
+
+    private void ApplyBios()
+    {
+        foreach (var (month, day, death, year, name, text) in _bios)
+        {
+            var map = death ? _deaths : _births;
+            if (!map.TryGetValue((month, day), out var list)) continue;
+            for (var i = 0; i < list.Count; i++)
+                if (list[i].Year == year && list[i].Name == name && string.IsNullOrWhiteSpace(list[i].Details)) list[i] = list[i] with { Details = text };
         }
     }
 

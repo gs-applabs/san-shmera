@@ -9,7 +9,7 @@ Full description of the contract and of who does what: `OpsisNewsCrawler\docs\PL
 ## What the host must have
 An Opsis built after 2026-11-02 (its `OpsisNewsCrawler.Plugin.Abstractions.dll` contains the text `PluginFeeds`). The Opsis 2.3.1 installed under `C:\Program Files\Opsis - Desktop Customization`
 has the older contract: it skips the plugin and writes `Could not load type '...IPluginWidgetProvider'` to `%AppData%\Opsis\plugins.log`.
-The current Opsis builds are in `MotionDeskStudio\bin\Release\net10.0-windows10.0.19041.0\win-x64`.
+The current Opsis builds are in `MotionDeskStudio\bin\Release\net11.0-windows10.0.19041.0\win-x64`.
 
 ## Install and check
 1. Close Opsis. Run `install-plugin.bat` (or the setup, component "Plugin"): it copies `dist\plugin` to `%AppData%\Opsis\plugins\Chronikologio`.

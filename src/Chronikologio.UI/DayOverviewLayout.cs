@@ -523,7 +523,7 @@ public sealed class DayOverviewLayout : DayLayout
         {
             var people = _filter == 2 ? _day.People : _day.DeathList;
             if (people.Count == 0) _cards.Controls.Add(new Label { Text = Loc.T("short.noentries"), AutoSize = true, Tag = "muted", Padding = new Padding(2, 8, 0, 0) });
-            foreach (var person in people) { var (portrait, portraitInfo, portraitPath) = LoadFirst(person.Images); var tile = new EventTile(person.YearText, person.Name, person.Description, portraitInfo is null ? "" : Loc.T("event.source") + ": commons.wikimedia.org", portrait, portraitInfo, portraitPath); var who = person; tile.Opened += () => TextDialog.Show(FindForm(), who.Name, who.YearText + " — " + who.Name, who.Description); _cards.Controls.Add(tile); }
+            foreach (var person in people) { var (portrait, portraitInfo, portraitPath) = LoadFirst(person.Images); var tile = new EventTile(person.YearText, person.Name, person.Description, portraitInfo is null ? "" : Loc.T("event.source") + ": commons.wikimedia.org", portrait, portraitInfo, portraitPath); var who = person; tile.Opened += () => TextDialog.Show(FindForm(), who.Name, who.YearText + " — " + who.Name, (string.IsNullOrWhiteSpace(who.Details) ? who.Description : who.Description + "\n\n" + who.Details).Replace("\n", Environment.NewLine)); _cards.Controls.Add(tile); }
         }
         FitTiles(Math.Max(300, _stack.ClientSize.Width - _stack.Padding.Horizontal - SystemInformation.VerticalScrollBarWidth));
         Paint(_cards, ChronikologioTheme.Palette, false);   // only the new cards: RestyleAll would show the day again

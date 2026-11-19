@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ChronNet: "10.0"   # the workflows stay on the .NET 10 SDK of the runners until .NET 11 is offered there
+  ChronNet: "11.0"
 
 permissions:
   contents: read
@@ -30,7 +30,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '11.0.x'
 
       - name: Inno Setup
         shell: pwsh

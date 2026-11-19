@@ -41,7 +41,7 @@
 
 ### Build
 
-Απαιτούνται .NET 10 SDK και Inno Setup 6 ή 7.
+Απαιτούνται .NET 11 SDK και Inno Setup 6 ή 7.
 
 ```bat
 run.bat                          :: εκτέλεση από τον κώδικα
@@ -74,5 +74,5 @@ build-installer.bat skip-tests   :: χωρίς τεστ
 - **Data:** the saints' commemorations come from synaxarion.gr (3,450 entries) and our own calendar; births, deaths and events come from the Greek Wikipedia and are rewritten in our own words. Every entry shows its verification state («Verified» only after an official source was opened). For antiquity and the Middle Ages only events with a documented date are listed.
 - **Images:** only free licences from Wikimedia Commons (public domain, CC0, CC BY), with author, licence and source link.
 - **Install:** download `ChronikologioSetup.exe` from Releases and check the SHA-256 in the `.sha256` file. The installer detects Opsis and installs the plugin. Binaries are not code-signed.
-- **Build:** .NET 10 SDK and Inno Setup 6/7; see the commands above.
+- **Build:** .NET 11 SDK and Inno Setup 6/7; see the commands above.
 - **Licence:** MIT, see [LICENSE](LICENSE).

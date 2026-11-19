@@ -13,8 +13,8 @@
 
 ## Δομή
 - `data/<παράδοση>/<ΜΜ>.json`: π.χ. `orthodox-el` (αναθεωρημένο Ιουλιανό), `history` (γρηγοριανό). Νέοι πολιτισμοί = νέοι φάκελοι.
-- `Chronikologio.Core` (net10.0): μοντέλο, φόρτωση, αναζήτηση ονόματος χωρίς τόνους, ροή «Σαν σήμερα».
-- `Chronikologio.Windows` (net10.0-windows, WinForms): αυτόνομη εφαρμογή.
+- `Chronikologio.Core` (net11.0): μοντέλο, φόρτωση, αναζήτηση ονόματος χωρίς τόνους, ροή «Σαν σήμερα».
+- `Chronikologio.Windows` (net11.0-windows, WinForms): αυτόνομη εφαρμογή.
 - Δοκιμές: `tests/Chronikologio.Core.Tests`.
 
 ## Κάλυψη δεδομένων (τρέχουσα)

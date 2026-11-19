@@ -68,7 +68,7 @@ public sealed record HistoricalEvent(
 }
 
 /// <summary>A notable person born on the day. Persons of the Greek world (Region "Ελλάδα") are listed before the others. Year is negative for BC.</summary>
-public sealed record Person(int Year, string Name, string Description, string Region, ImageRef[]? Images = null, string? Id = null)
+public sealed record Person(int Year, string Name, string Description, string Region, ImageRef[]? Images = null, string? Id = null, string? Details = null)
 {
     public bool IsGreek => Region is "Ελλάδα" or "Κύπρος";
 

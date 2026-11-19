@@ -1,5 +1,5 @@
 @echo off
-rem Builds and starts Chronikologio (stand-alone app). Needs the .NET SDK (10 or 11); set CHRON_NET=10.0 to run on .NET 10.
+rem Builds and starts Chronikologio (stand-alone app). Needs the .NET SDK (11, or 10 with CHRON_NET=10.0); set CHRON_NET=10.0 to run on .NET 10.
 setlocal
 cd /d "%~dp0"
 if "%CHRON_NET%"=="" set "CHRON_NET=11.0"
