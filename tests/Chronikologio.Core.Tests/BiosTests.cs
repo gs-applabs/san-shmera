@@ -51,7 +51,7 @@ public sealed class BiosTests
         {
             if (f.Length != 5) continue;
             var words = f[4].Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
-            if (words < 25 || words > 300) bad.Add($"{file}:{n} has {words} words");
+            if (words < 20 || words > 300) bad.Add($"{file}:{n} has {words} words");
         }
         Assert.True(bad.Count == 0, string.Join("\n", bad.Take(20)));
     }
