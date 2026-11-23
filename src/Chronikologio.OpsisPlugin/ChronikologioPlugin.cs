@@ -1,3 +1,4 @@
+using System.Reflection;
 using Chronikologio.Core;
 using Chronikologio.UI;
 using OpsisNewsCrawler.Plugin.Abstractions;
@@ -16,7 +17,8 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
 
     public string Id => "chronikologio";
     public string Name => "Χρονικολόγιο — Timeline Calendar";
-    public string Version => typeof(ChronikologioPlugin).Assembly.GetName().Version?.ToString(3) ?? "0.1.0";
+    // Keep the displayed/upgrade-comparison product version independent of the pinned 1.0.0.0 plugin DLL identity.
+    public string Version => typeof(ChronikologioPlugin).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "0.9.0";
 
     public event Action<string>? NavigationRequested { add { } remove { } }
 

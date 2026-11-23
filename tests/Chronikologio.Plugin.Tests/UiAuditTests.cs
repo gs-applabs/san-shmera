@@ -181,10 +181,11 @@ public class UiAuditTests : IDisposable
     [Fact]
     public void DarkThemeUsesDarkBackgroundsInEveryLayout()
     {
-        ChronikologioTheme.Set("dark");
         foreach (var layout in UiSettings.LayoutNames)
         {
             using var window = Open(1100, 700);
+            // The window loads persisted/system theme in its constructor; select dark afterward.
+            window.ChooseTheme("dark");
             window.PerformLayout();
             window.ChooseLayout(layout);
             foreach (var c in All(window).Where(Shown).OfType<ScrollableControl>().Where(s => s.BackColor.A == 255))

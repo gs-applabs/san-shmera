@@ -53,6 +53,7 @@ public sealed class FlagButton : PictureBox
     private void ShowMenu()
     {
         var menu = new ContextMenuStrip { ShowImageMargin = true, ShowCheckMargin = false, Renderer = new FlatMenuRenderer() };
+        menu.Closed += (_, _) => menu.Dispose();
         foreach (var country in Countries.All)
         {
             var region = country.Region;
@@ -76,12 +77,15 @@ public sealed class MiniCalendar : UserControl
     private readonly Label _next = new() { Text = "▶", Dock = DockStyle.Right, Width = 28, TextAlign = ContentAlignment.MiddleCenter, Cursor = Cursors.Hand };
     private readonly CalendarGrid _grid = new() { Dock = DockStyle.Fill };
     private DayStore _store;
+    private readonly Font _titleBoldFont;
 
     public event Action<DateOnly>? DateChosen;
 
     public MiniCalendar(DayStore store)
     {
         _store = store;
+        _titleBoldFont = new Font(Font, FontStyle.Bold);
+        _title.Font = _titleBoldFont;
         var nav = new Panel { Dock = DockStyle.Top, Height = 26 };
         nav.Controls.Add(_title);
         nav.Controls.Add(_prev);
@@ -113,13 +117,18 @@ public sealed class MiniCalendar : UserControl
 
     public void UpdateTitle() => _title.Text = _grid.Month.ToString("MMMM yyyy", Loc.Culture);
 
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        if (disposing) _titleBoldFont.Dispose();
+    }
+
     public void Restyle()
     {
         var p = ChronikologioTheme.Palette;
         BackColor = p.Background;
         foreach (var c in new Control[] { _title, _grid }) { c.BackColor = p.Background; c.ForeColor = p.Text; }
         foreach (var c in new[] { _prev, _next }) { c.BackColor = p.Background; c.ForeColor = p.TextMuted; }
-        _title.Font = new Font(Font, FontStyle.Bold);
         _grid.Accent = p.Accent;
         _grid.Muted = p.TextMuted;
         _grid.Invalidate();
@@ -238,7 +247,12 @@ public sealed class DayHeader : Panel
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) WaveClock.Unsubscribe(_tick);
+        if (disposing)
+        {
+            WaveClock.Unsubscribe(_tick);
+            _tip.Dispose();
+            _date.Font.Dispose();
+        }
         base.Dispose(disposing);
     }
 }

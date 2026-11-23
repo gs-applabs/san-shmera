@@ -183,11 +183,6 @@ public sealed class MainWindow : Form
     {
         Text = Loc.T("app.title");
         _searchBar.SetPlaceholder(Loc.T("search.placeholder"));
-        _themeItems.Clear();
-        _regionItems.Clear();
-        _languageItems.Clear();
-        _layoutItems.Clear();
-        _menu.Items.Clear();
         BuildMenu();
         BuildRail();
         foreach (var item in _themeItems) item.Checked = (string?)item.Tag == ChronikologioTheme.Name;
@@ -234,6 +229,16 @@ public sealed class MainWindow : Form
 
     private void BuildMenu()
     {
+        // Rebuilding the menu (language/theme/update settings) must dispose old items:
+        // Items.Clear alone removes them but leaves images and native UI resources alive.
+        var oldItems = _menu.Items.Cast<ToolStripItem>().ToArray();
+        _menu.Items.Clear();
+        foreach (var item in oldItems) item.Dispose();
+        _themeItems.Clear();
+        _regionItems.Clear();
+        _languageItems.Clear();
+        _layoutItems.Clear();
+
         var file = new ToolStripMenuItem(Loc.T("menu.file"));
         file.DropDownItems.Add(new ToolStripMenuItem(Loc.T("menu.exit"), null, (_, _) => Close()) { ShortcutKeyDisplayString = "Alt+F4" });
 
@@ -351,6 +356,7 @@ public sealed class MainWindow : Form
     {
         var p = ChronikologioTheme.Palette;
         BackColor = p.Background;
+        _host.BackColor = p.Background; // the host panel is outside DayLayout's themed subtree
         ForeColor = p.Text;
         _searchBar.Restyle();
         _menu.BackColor = p.Surface;
@@ -365,5 +371,14 @@ public sealed class MainWindow : Form
     {
         base.OnHandleCreated(e);
         TitleBar.Apply(Handle, ChronikologioTheme.IsDark);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        // The shared calendar is detached from TabsLayout when that layout is
+        // disposed; in other layouts it was never parented at all. WinForms
+        // therefore cannot release it automatically with the form.
+        if (disposing) _panel?.Dispose();
     }
 }
