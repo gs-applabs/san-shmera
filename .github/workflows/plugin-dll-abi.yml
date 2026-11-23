@@ -23,11 +23,24 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
-      - name: Test Chronikologio plugin, including DLL version
+      - name: Test plugin and services in an isolated WinForms test process
         shell: pwsh
         run: |
-          dotnet test tests/Chronikologio.Plugin.Tests/Chronikologio.Plugin.Tests.csproj -c Release --nologo -m:1
-          if ($LASTEXITCODE -ne 0) { throw 'Chronikologio plugin tests failed' }
+          $project = 'tests/Chronikologio.Plugin.Tests/Chronikologio.Plugin.Tests.csproj'
+          dotnet test $project -c Release --nologo -m:1 --filter 'FullyQualifiedName!~UiAuditTests&FullyQualifiedName!~LayoutTests' --logger "trx;LogFileName=regular.trx"
+          if ($LASTEXITCODE -ne 0) { throw 'Chronikologio plugin/service tests failed' }
+      - name: Test layout and country changes in a fresh WinForms process
+        shell: pwsh
+        run: |
+          $project = 'tests/Chronikologio.Plugin.Tests/Chronikologio.Plugin.Tests.csproj'
+          dotnet test $project -c Release --nologo -m:1 --no-build --filter 'FullyQualifiedName~LayoutTests' --logger "trx;LogFileName=layout.trx"
+          if ($LASTEXITCODE -ne 0) { throw 'Chronikologio layout tests failed' }
+      - name: Run exhaustive UI audit in its own clean WinForms process
+        shell: pwsh
+        run: |
+          $project = 'tests/Chronikologio.Plugin.Tests/Chronikologio.Plugin.Tests.csproj'
+          dotnet test $project -c Release --nologo -m:1 --no-build --filter 'FullyQualifiedName~UiAuditTests' --logger "trx;LogFileName=ui-audit.trx"
+          if ($LASTEXITCODE -ne 0) { throw 'Chronikologio exhaustive UI audit failed' }
       - name: Build plugin for Opsis host
         shell: pwsh
         run: |
