@@ -12,7 +12,14 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
     public const string FeedKey = "san-simera";
 
     private DailySnapshotService? _service;
+    private Action? _snapshotChangedHandler;
     private string _language = "el";
+
+#if OPSIS_P1_BRIDGE
+    // The host may load a different physical 0.8.0.0 contract; this branch is opt-in
+    // only after deploying the new contract DLL to the Opsis host first.
+    private IReadOnlyList<PluginRichFeedItem> _richSnapshot = Array.Empty<PluginRichFeedItem>();
+#endif
 
     public string Id => "chronikologio";
     public string Name => "Χρονικολόγιο — Timeline Calendar";
@@ -32,11 +39,19 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
         var service = Service;
         PluginFeeds.Register(new PluginFeed(FeedKey, "Σαν σήμερα", "On this day", BuildFeed));
         // a new snapshot (midnight, another country, another language): register the feed again, which tells the bars to ask for the lines again
-        service.Changed += () => 
+        if (_snapshotChangedHandler is not null) service.Changed -= _snapshotChangedHandler;
+        _snapshotChangedHandler = () =>
         {
             PluginLog.Write($"snapshot ready: {service.Current?.Items.Count} lines for {service.Current?.Date}, region {service.Current?.Region}; feeds registered now: {PluginFeeds.All().Count}");
             PluginFeeds.Register(new PluginFeed(FeedKey, "Σαν σήμερα", "On this day", BuildFeed));
+#if OPSIS_P1_BRIDGE
+            UpdateSuiteBridge(service.Current);
+#endif
         };
+        service.Changed += _snapshotChangedHandler;
+#if OPSIS_P1_BRIDGE
+        UpdateSuiteBridge(service.Current);
+#endif
         service.Start();
         PluginLog.Write($"feed '{FeedKey}' registered; feeds known to the host: {string.Join(", ", PluginFeeds.All().Select(f => f.Key))}");
     }
@@ -44,6 +59,9 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
     public void Stop()
     {
         PluginFeeds.Unregister(FeedKey);
+        if (_service is not null && _snapshotChangedHandler is not null)
+            _service.Changed -= _snapshotChangedHandler;
+        _snapshotChangedHandler = null;
         _service?.Dispose();
         _service = null;
     }
@@ -92,6 +110,27 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
         panel.StoreChanged += store => Service.SetRegion(store.Region);   // the bar feed follows the country chosen with the flag
         return panel;
     }
+
+#if OPSIS_P1_BRIDGE
+    /// <summary>Called from the snapshot service worker thread; never does I/O on the News Crawler UI thread.</summary>
+    private void UpdateSuiteBridge(DailySnapshot? snapshot)
+    {
+        var converted = snapshot is null ? Array.Empty<PluginRichFeedItem>() :
+            RichDayProjection.Project(snapshot).Select(line => new PluginRichFeedItem(
+                line.EntryId, line.Text, Url: null, Kind: line.Kind, Summary: line.Text,
+                ImageId: null, CountryCode: line.CountryCode, LanguageCode: line.LanguageCode,
+                HistoricalYear: line.HistoricalYear, DetailId: line.DetailId, Priority: line.Priority)).ToArray();
+        Volatile.Write(ref _richSnapshot, converted);
+        // Retain the legacy text feed. Rich-capable consumers prefer the rich feed with the same key.
+        PluginFeeds.RegisterRich(new PluginRichFeed(FeedKey, "Σαν σήμερα", "On this day",
+            () => Volatile.Read(ref _richSnapshot)));
+        if (snapshot is not null)
+            foreach (var line in converted.Take(60))
+                SuiteEventHub.Publish(new SuiteEvent(SuiteEventKind.Calendar, "chronikologio",
+                    line.EntryId, line.Text, snapshot.GeneratedAt, null, line.Summary,
+                    line.ImageId, line.HistoricalYear));
+    }
+#endif
 
     // Called by the bars on the UI thread: only reads the ready snapshot (empty for the first moments after Start).
     private int _asked;

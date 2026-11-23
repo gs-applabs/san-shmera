@@ -1,0 +1,44 @@
+name: Chronikologio 0.28.0 P3 ABI 1.0.0.0 contract integration smoke
+on:
+  push:
+    paths:
+      - 'src/Chronikologio.Core/RichDayProjection.cs'
+      - 'src/Chronikologio.OpsisPlugin/ChronikologioPlugin.cs'
+      - '.github/workflows/p1-crawler-integration.yml'
+  pull_request:
+    paths:
+      - 'src/Chronikologio.Core/RichDayProjection.cs'
+      - 'src/Chronikologio.OpsisPlugin/ChronikologioPlugin.cs'
+      - '.github/workflows/p1-crawler-integration.yml'
+jobs:
+  baseline:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet test tests/Chronikologio.Core.Tests/Chronikologio.Core.Tests.csproj -c Release
+      - run: dotnet build src/Chronikologio.OpsisPlugin/Chronikologio.OpsisPlugin.csproj -c Release
+  staged-p1:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: chronikologio
+      - uses: actions/checkout@v4
+        with:
+          repository: gs-applabs/OpsisNewsCrawler
+          ref: release/p3-v0.28.0-contract1-20261123
+          path: crawler
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build updated optional contract
+        run: dotnet build crawler/src/OpsisNewsCrawler.Plugin.Abstractions/OpsisNewsCrawler.Plugin.Abstractions.csproj -c Release
+      - name: Stage contract DLL in isolated runner
+        shell: pwsh
+        run: |
+          Copy-Item crawler/src/OpsisNewsCrawler.Plugin.Abstractions/bin/Release/net10.0-windows/OpsisNewsCrawler.Plugin.Abstractions.dll chronikologio/libs/OpsisNewsCrawler.Plugin.Abstractions.dll -Force
+      - name: Compile rich feed bridge only against matching DLL
+        run: dotnet build chronikologio/src/Chronikologio.OpsisPlugin/Chronikologio.OpsisPlugin.csproj -c Release -p:DefineConstants=OPSIS_P1_BRIDGE
