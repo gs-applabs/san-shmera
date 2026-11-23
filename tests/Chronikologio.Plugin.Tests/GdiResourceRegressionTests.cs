@@ -13,7 +13,7 @@ public sealed class GdiResourceRegressionTests
         var title = calendar.Controls.Cast<Control>()
             .SelectMany(parent => parent.Controls.Cast<Control>())
             .OfType<Label>()
-            .First(c => c.Text.Contains(DateTime.Today.Year.ToString(), StringComparison.Ordinal));
+            .Single(c => c.Font.Bold);
         var font = title.Font;
         for (var i = 0; i < 30; i++) calendar.Restyle();
         Assert.Same(font, title.Font);
