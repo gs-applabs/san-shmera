@@ -1,0 +1,43 @@
+name: Chronikologio DLL ABI regression
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  plugin-abi:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Test Chronikologio plugin, including DLL version
+        shell: pwsh
+        run: |
+          dotnet test tests/Chronikologio.Plugin.Tests/Chronikologio.Plugin.Tests.csproj -c Release --nologo -m:1
+          if ($LASTEXITCODE -ne 0) { throw 'Chronikologio plugin tests failed' }
+      - name: Build plugin for Opsis host
+        shell: pwsh
+        run: |
+          dotnet publish src/Chronikologio.OpsisPlugin/Chronikologio.OpsisPlugin.csproj -c Release -o publish-plugin -m:1 --nologo
+          if ($LASTEXITCODE -ne 0) { throw 'Chronikologio plugin publish failed' }
+          $dll = (Resolve-Path 'publish-plugin/Chronikologio.OpsisPlugin.dll').Path
+          $a = [Reflection.AssemblyName]::GetAssemblyName($dll)
+          if ($a.Version.ToString() -ne '1.0.0.0') { throw "Unexpected plugin ABI: $($a.FullName)" }
+          $fv = [Diagnostics.FileVersionInfo]::GetVersionInfo($dll).FileVersion
+          if ($fv -ne '1.0.0.0') { throw "Unexpected file version: $fv" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chronikologio-1-0-0-0-plugin
+          path: publish-plugin/
+          if-no-files-found: warn
+          retention-days: 7
