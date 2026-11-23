@@ -16,7 +16,7 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
 
     public string Id => "chronikologio";
     public string Name => "Χρονικολόγιο — Timeline Calendar";
-    public string Version => typeof(ChronikologioPlugin).Assembly.GetName().Version?.ToString(3) ?? "0.1.0";
+    public string Version => typeof(ChronikologioPlugin).Assembly.GetName().Version?.ToString(4) ?? "1.0.0.0";
 
     public event Action<string>? NavigationRequested { add { } remove { } }
 
