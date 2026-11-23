@@ -372,4 +372,13 @@ public sealed class MainWindow : Form
         base.OnHandleCreated(e);
         TitleBar.Apply(Handle, ChronikologioTheme.IsDark);
     }
+
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        // The shared calendar is detached from TabsLayout when that layout is
+        // disposed; in other layouts it was never parented at all. WinForms
+        // therefore cannot release it automatically with the form.
+        if (disposing) _panel?.Dispose();
+    }
 }
