@@ -351,6 +351,7 @@ public sealed class MainWindow : Form
     {
         var p = ChronikologioTheme.Palette;
         BackColor = p.Background;
+        _host.BackColor = p.Background; // the host panel is outside DayLayout's themed subtree
         ForeColor = p.Text;
         _searchBar.Restyle();
         _menu.BackColor = p.Surface;
