@@ -1,4 +1,4 @@
-name: Chronikologio 0.28.0 shared-contract integration smoke
+name: Chronikologio 0.28.0 P3 ABI 1.0.0.0 contract integration smoke
 on:
   push:
     paths:
@@ -29,7 +29,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: gs-applabs/OpsisNewsCrawler
-          ref: release/p2-v0.28.0-20261123
+          ref: release/p3-v0.28.0-contract1-20261123
           path: crawler
       - uses: actions/setup-dotnet@v4
         with:
