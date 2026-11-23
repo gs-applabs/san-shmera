@@ -20,11 +20,15 @@ public sealed class CalendarPanel : UserControl
     private readonly Panel _bottom = new() { Dock = DockStyle.Bottom, Height = 190 };
     private readonly ToolTip _tip = new();
     private readonly CalendarGrid _grid = new() { Dock = DockStyle.Fill };
+    private readonly Font _boldFont;
 
     public CalendarPanel(DayStore store)
     {
         _store = store;
         Font = new Font("Segoe UI", 9.5f);
+        _boldFont = new Font(Font, FontStyle.Bold);
+        _title.Font = _boldFont;
+        _date.Font = _boldFont;
         MinimumSize = new Size(220, 300);
         var nav = new Panel { Dock = DockStyle.Top, Height = 28 };
         nav.Controls.Add(_title);
@@ -74,8 +78,11 @@ public sealed class CalendarPanel : UserControl
             ChronikologioTheme.Changed -= ApplyTheme;
             Loc.Changed -= ApplyLanguage;
             _flag.Image?.Dispose();
+            _thumb.Image?.Dispose();
+            _tip.Dispose();
         }
         base.Dispose(disposing);
+        if (disposing) _boldFont.Dispose();
     }
 
     /// <summary>Path of the settings file the choice of country is saved to (null = the default file in %AppData%).</summary>
@@ -115,6 +122,7 @@ public sealed class CalendarPanel : UserControl
     private void ShowCountryMenu()
     {
         var menu = new ContextMenuStrip { ShowImageMargin = true, ShowCheckMargin = false, Renderer = new Opsis.UI.FlatMenuRenderer() };
+        menu.Closed += (_, _) => menu.Dispose();
         foreach (var country in Countries.All)
         {
             var region = country.Region;
@@ -175,8 +183,7 @@ public sealed class CalendarPanel : UserControl
         _prev.ForeColor = _next.ForeColor = muted;
         _date.ForeColor = muted;
         _grid.Accent = accent; _grid.Muted = muted;
-        _title.Font = new Font(Font, FontStyle.Bold);
-        _date.Font = new Font(Font, FontStyle.Bold);
+        // Font was created once in the constructor. Restyling must not allocate GDI fonts.
         _grid.Invalidate();
     }
 
