@@ -1,0 +1,23 @@
+name: Opsis.UI 6 staged compatibility
+on:
+  push:
+    paths:
+      - 'src/Chronikologio.UI/OpsisUi6Cards.cs'
+      - 'docs/OPSIS-UI6-STAGED.md'
+      - '.github/workflows/opsis-ui6-staged.yml'
+  pull_request:
+    paths:
+      - 'src/Chronikologio.UI/OpsisUi6Cards.cs'
+      - 'docs/OPSIS-UI6-STAGED.md'
+      - '.github/workflows/opsis-ui6-staged.yml'
+
+jobs:
+  old-ui-dll-still-builds:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build Chronikologio using its currently deployed Opsis.UI binary
+        run: dotnet build src/Chronikologio.UI/Chronikologio.UI.csproj -c Release
