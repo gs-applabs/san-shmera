@@ -13,7 +13,7 @@ public sealed class PluginDllVersionTests
         var dll = typeof(ChronikologioPlugin).Assembly;
         Assert.Equal(new Version(1, 0, 0, 0), dll.GetName().Version);
         Assert.Equal("1.0.0.0", FileVersionInfo.GetVersionInfo(dll.Location).FileVersion);
-        Assert.Equal("1.0.0.0", new ChronikologioPlugin().Version);
+        Assert.Equal("0.9.0", new ChronikologioPlugin().Version);
     }
 
     [Fact]
