@@ -137,7 +137,7 @@ internal static class LocalizationEn
             "Chronikologio shows, for every day of the year, which saints are honoured, which names celebrate and what they mean, what happened on this day in Greek and world history, and who was born. The texts of the database are in Greek for now.\n\n" +
             "USE\n" +
             "• Click a day in the calendar. A short text appears under it and, when there is one, a picture.\n" +
-            "• The button “Full text and sources” (or a double click on the short text) opens the full text with the pictures beside it.\n" +
+            "• The button “Full text and sources” (or a double click on the short text) opens the full text with the pictures beside it. The analysis of each event, the life of each saint and the short biography of each person are there too (in Greek for now).\n" +
             "• The flag at the top left changes the country: the calendar changes with it, and the language too unless you chose one in the Settings. Greece and Cyprus exist today.\n" +
             "• The search at the top right finds a name, a saint or an event, with or without accents.\n" +
             "• Major feasts are shown with a bold number and a small line under the day.\n\n" +
@@ -150,7 +150,7 @@ internal static class LocalizationEn
             "• The open calendar Orthocal (https://orthocal.info), to cross-check dates.\n" +
             "• The “On this day” columns of news sites, to cross-check the dates of events. Their texts are not copied.\n" +
             "• The Megas Synaxaristis (https://www.synaxarion.gr), for the memories of the saints of each day and their dates; the lives are written in our own words.\n" +
-            "• The Greek Wikipedia (https://el.wikipedia.org), for events, births and deaths; the photographs of people and events come from Wikimedia Commons with a free licence, and each shows its author, licence and link.\n" +
+            "• The Greek Wikipedia (https://el.wikipedia.org) and Wikidata, for events, births and deaths; the photographs of people and events come from Wikimedia Commons with a free licence, and each shows its author, licence and link.\n" +
             "• The Historical Calendar of greekrewind.gr (https://www.greekrewind.gr), as an aid to find missing Greek events; its texts are not copied, ours are written in our own words.\n" +
             "• The Synaxaristes of the twelve months by Nikodemos the Hagiorite (19th-century edition, public domain, from the Internet Archive), from which the lives of saints are written in our own words.\n" +
             "• The Great Synaxaristes of the Orthodox Church (https://msoe.gr), the source of the facts for further lives of saints, which are written in modern Greek in our own words, without copying any text.\n" +

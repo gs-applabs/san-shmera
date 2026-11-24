@@ -7,7 +7,7 @@ Full description of the contract and of who does what: `OpsisNewsCrawler\docs\PL
 * **Feed** `san-simera` («Σαν σήμερα») for the bars of the News Crawler: holidays and fast of the day, who celebrates (with the old calendar date), the saints, the events, the births.
 
 ## What the host must have
-An Opsis built after 2026-11-02 (its `OpsisNewsCrawler.Plugin.Abstractions.dll` contains the text `PluginFeeds`). The Opsis 2.3.1 installed under `C:\Program Files\Opsis - Desktop Customization`
+Opsis 2.6.0 or newer (plugin contract 1.0.0.0, .NET 11). An older Opsis, for example 2.3.1 installed under `C:\Program Files\Opsis - Desktop Customization`
 has the older contract: it skips the plugin and writes `Could not load type '...IPluginWidgetProvider'` to `%AppData%\Opsis\plugins.log`.
 The current Opsis builds are in `MotionDeskStudio\bin\Release\net11.0-windows10.0.19041.0\win-x64`.
 
