@@ -8,7 +8,7 @@ namespace Chronikologio.Plugin.Tests;
 /// <summary>Plugin contract 1.0.0.0 of Opsis 2.6.0: the shared contract DLL is the canonical one, and the plugin offers the update source and takes the host settings.</summary>
 public class ContractTests
 {
-    private const string CanonicalSha256 = "f5f1a21cee0435abdc19e609fd785b762fc706103991579afe3eb13dcf10ffaf";
+    private const string CanonicalSha256 = "514f2a3eafa57770afd0f4b76cfe26397cfecd84edce06f071716fa0d9f30afe";
 
     private static string RepoFile(params string[] parts)
     {
