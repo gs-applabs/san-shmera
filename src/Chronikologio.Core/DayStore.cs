@@ -202,11 +202,12 @@ public sealed class DayStore
         }
     }
 
-    // English texts of the entries (data/i18n/en-*.tsv): "kind|MM-DD|year|Greek title or name|English title or name|English text"; kind = event, saint, birth, death or life
+    // English texts of the entries (data/i18n/en-*.tsv): "kind|MM-DD|year|Greek title or name|English title or name|English text"; kind = event, saint, birth, death, life, analysis or bio
     // (for a life the third field after the date is empty and the Greek title is the beginning of the title of the commemoration; paragraphs are separated by " // ")
     private readonly Dictionary<string, (string Title, string Text)> _en = new(StringComparer.Ordinal);
     private readonly List<(int Month, int Day, string Prefix, string Life)> _enLives = new();
     private readonly Dictionary<string, string> _enAnalysis = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _enBios = new(StringComparer.Ordinal);
 
     private void AddEnglish(string file, List<string> errors)
     {
@@ -223,6 +224,7 @@ public sealed class DayStore
                 continue;
             }
             if (f[0] == "analysis") { _enAnalysis[EntryIds.Key("event", month, day, f[2].Length > 0 ? int.Parse(f[2], System.Globalization.CultureInfo.InvariantCulture) : null, f[3].Trim())] = f[5].Trim().Replace(" // ", "\n\n"); continue; }
+            if (f[0] == "bio") { _enBios[EntryIds.Key("bio", month, day, f[2].Length > 0 ? int.Parse(f[2], System.Globalization.CultureInfo.InvariantCulture) : null, f[3].Trim())] = f[5].Trim().Replace(" // ", "\n\n"); continue; }
             if (f[0] == "life") { _enLives.Add((month, day, f[3].Trim(), f[5].Trim().Replace(" // ", "\n\n"))); continue; }
             int? year = f[2].Length > 0 ? int.Parse(f[2], System.Globalization.CultureInfo.InvariantCulture) : null;
             _en[EntryIds.Key(f[0], month, day, year, f[3].Trim())] = (f[4].Trim(), f[5].Trim());
@@ -234,7 +236,7 @@ public sealed class DayStore
     /// <summary>The day with the English texts of its entries, where the database has them (the others stay in Greek).</summary>
     private DayView InEnglish(DayView v)
     {
-        if (_en.Count == 0 && _enLives.Count == 0 && _enAnalysis.Count == 0) return v;
+        if (_en.Count == 0 && _enLives.Count == 0 && _enAnalysis.Count == 0 && _enBios.Count == 0) return v;
         string T(string kind, int? year, string title, out string text)
         {
             text = "";
@@ -256,7 +258,7 @@ public sealed class DayStore
             var analysis = _enAnalysis.TryGetValue(EntryIds.Key("event", v.Month, v.Day, e.Year, e.Title), out var a) ? a : (e.Details is not null && ContainsGreek(e.Details) ? null : e.Details);
             return e with { Title = title, Summary = text.Length > 0 ? text : e.Summary, Details = analysis };
         }).ToList();
-        List<Person> People(IReadOnlyList<Person> list, string kind) => list.Select(p => { var name = T(kind, p.Year, p.Name, out var text); var details = p.Details is not null && ContainsGreek(p.Details) ? null : p.Details; return text.Length > 0 || name != p.Name || details != p.Details ? p with { Name = name, Description = text.Length > 0 ? text : p.Description, Details = details } : p; }).ToList();
+        List<Person> People(IReadOnlyList<Person> list, string kind) => list.Select(p => { var name = T(kind, p.Year, p.Name, out var text); var details = _enBios.TryGetValue(EntryIds.Key("bio", v.Month, v.Day, p.Year, p.Name), out var enBio) ? enBio : p.Details is not null && ContainsGreek(p.Details) ? null : p.Details; return text.Length > 0 || name != p.Name || details != p.Details ? p with { Name = name, Description = text.Length > 0 ? text : p.Description, Details = details } : p; }).ToList();
         return v with { Commemorations = commemorations, Events = events, Births = People(v.People, "birth"), Deaths = People(v.DeathList, "death") };
     }
 

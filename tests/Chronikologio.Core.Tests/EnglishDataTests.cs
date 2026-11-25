@@ -42,6 +42,33 @@ public sealed class EnglishDataTests
     }
 
     [Fact]
+    public void EnglishBiographiesMatchAGreekBiographyAndAreEnglish()
+    {
+        var files = Directory.GetFiles(Path.Combine(FindData(), "i18n"), "en-bios*.tsv");
+        var seen = new HashSet<string>();
+        foreach (var file in files)
+        {
+            var n = 0;
+            foreach (var line in File.ReadLines(file))
+            {
+                n++;
+                if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#')) continue;
+                var f = line.Split('|');
+                Assert.True(f.Length == 6 && f[0] == "bio", $"{Path.GetFileName(file)}:{n}: bad line");
+                var m = int.Parse(f[1][..2]); var d = int.Parse(f[1][3..]); var y = int.Parse(f[2]);
+                Assert.True(seen.Add($"{f[1]}|{y}|{f[3]}"), $"{Path.GetFileName(file)}:{n}: duplicate");
+                var stores = new[] { Store, DayStore.Load(FindData(), "cy") };
+                var person = stores.SelectMany(st => { var el = st.GetDayIn(m, d, "el"); return el.People.Concat(el.DeathList); }).FirstOrDefault(p => p.Year == y && p.Name == f[3]);
+                Assert.True(person is { Details: { Length: > 0 } }, $"{Path.GetFileName(file)}:{n}: no Greek biography for {f[3]}");
+                Assert.False(Greek(f[4]) || Greek(f[5]), $"{Path.GetFileName(file)}:{n}: Greek letters in the English text");
+                var words = f[5].Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+                Assert.InRange(words, 15, 330);
+                Assert.Contains(stores.SelectMany(st => { var en = st.GetDayIn(m, d, "en"); return en.People.Concat(en.DeathList); }), p => p.Year == y && p.Details == f[5].Replace(" // ", "\n\n"));
+            }
+        }
+    }
+
+    [Fact]
     public void EnglishLivesAreShownInEnglish()
     {
         var en = Store.GetDayIn(1, 1, "en");
