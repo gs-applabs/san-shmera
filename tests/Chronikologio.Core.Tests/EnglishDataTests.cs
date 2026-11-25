@@ -69,6 +69,54 @@ public sealed class EnglishDataTests
     }
 
     [Fact]
+    public void EnglishAnalysesMatchAGreekAnalysisAndAreEnglish()
+    {
+        var data = FindData();
+        var greek = new HashSet<string>();
+        foreach (var file in Directory.GetFiles(Path.Combine(data, "analysis"), "analysis*.tsv"))
+            foreach (var line in File.ReadLines(file))
+            {
+                if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#') || line.StartsWith("﻿#")) continue;
+                var f = line.Split('|');
+                greek.Add($"{f[0]}|{f[1]}|{f[2].Trim()}");
+            }
+        var english = new HashSet<string>();
+        foreach (var file in Directory.GetFiles(Path.Combine(data, "i18n"), "en-analysis*.tsv"))
+        {
+            var n = 0;
+            foreach (var line in File.ReadLines(file))
+            {
+                n++;
+                if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#')) continue;
+                var f = line.Split('|');
+                var where = $"{Path.GetFileName(file)}:{n}";
+                Assert.True(f.Length == 6 && f[0] == "analysis", $"{where}: bad line");
+                var key = $"{f[1]}|{f[2]}|{f[3].Trim()}";
+                Assert.True(greek.Contains(key), $"{where}: no Greek analysis for {key}");
+                Assert.True(english.Add(key), $"{where}: duplicate {key}");
+                Assert.False(Greek(f[4]) || Greek(f[5]), $"{where}: Greek letters in the English text");
+                Assert.True(f[5].Split(' ', StringSplitOptions.RemoveEmptyEntries).Length >= 8, $"{where}: too short");
+            }
+        }
+        var missing = greek.Count - english.Count;
+        Assert.True(missing <= 25, $"{missing} Greek analyses have no English version");
+        // and the English day shows them: most events with a Greek analysis have an English one
+        int withGreek = 0, withEnglish = 0;
+        for (var m = 1; m <= 12; m++)
+            for (var d = 1; d <= DateTime.DaysInMonth(2024, m); d++)
+            {
+                var el = Store.GetDayIn(m, d, "el");
+                var en = Store.GetDayIn(m, d, "en");
+                foreach (var e in el.Events.Where(e => e.Details is { Length: > 0 } && Greek(e.Details!)))
+                {
+                    withGreek++;
+                    if (en.Events.Any(x => x.Year == e.Year && x.Details is { Length: > 0 } && !Greek(x.Details!))) withEnglish++;
+                }
+            }
+        Assert.True(withEnglish >= withGreek * 0.95, $"only {withEnglish} of {withGreek} analyses reach the English day");
+    }
+
+    [Fact]
     public void EnglishLivesAreShownInEnglish()
     {
         var en = Store.GetDayIn(1, 1, "en");
