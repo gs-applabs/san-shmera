@@ -49,6 +49,7 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
         {
             PluginLog.Write($"snapshot ready: {service.Current?.Items.Count} lines for {service.Current?.Date}, region {service.Current?.Region}; feeds registered now: {PluginFeeds.All().Count}");
             PluginFeeds.Register(new PluginFeed(FeedKey, "Σαν σήμερα", "On this day", BuildFeed));
+            FeedExchange.TryWrite(service.Store);   // for the News Crawler when it is not in this process (same content = no write)
         };
         service.Start();
         PluginLog.Write($"feed '{FeedKey}' registered; feeds known to the host: {string.Join(", ", PluginFeeds.All().Select(f => f.Key))}");

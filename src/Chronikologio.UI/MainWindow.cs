@@ -24,6 +24,9 @@ public sealed class MainWindow : Form
     private DayLayout _layout;
     private DateOnly _date = DateOnly.FromDateTime(DateTime.Today);
 
+    /// <summary>Set by the stand-alone program: called with the store whenever the lines of the day may have changed (start, country, language), so the News Crawler can show them without Opsis. The tests never set it.</summary>
+    public Action<DayStore>? PublishFeed { get; set; }
+
     public MainWindow(string dataRoot, string? settingsPath = null)
     {
         _dataRoot = dataRoot;
@@ -49,6 +52,7 @@ public sealed class MainWindow : Form
             _layout.SetStore(store);
             _settings.Region = store.Region;   // the panel saved it already; keep this copy in step so later saves do not undo it
             _searchBar.SetStore(store);
+            PublishFeed?.Invoke(store);
         };
 
         _layout = new DayOverviewLayout(_store) { Dock = DockStyle.Fill };
@@ -77,6 +81,9 @@ public sealed class MainWindow : Form
     public void CycleTheme() => ChooseTheme(ChronikologioTheme.Next());
 
     /// <summary>The calendar in use: "gr" (Church of Greece) or "cy" (Church of Cyprus).</summary>
+    /// <summary>Publishes the current lines once (the stand-alone program calls it after setting <see cref="PublishFeed"/>).</summary>
+    public void PublishFeedNow() => PublishFeed?.Invoke(_store);
+
     public string Region => _store.Region;
 
     private void SaveWindowState()
@@ -144,6 +151,7 @@ public sealed class MainWindow : Form
         _settings.Language = setting;
         _settings.Save(_settingsPath);
         Loc.Set(Countries.Resolve(setting, _store.Region));
+        PublishFeed?.Invoke(_store);
     }
 
     /// <summary>The language setting in use: "auto", "el" or "en".</summary>
