@@ -53,7 +53,9 @@ public sealed class UpdateState
 /// </summary>
 public sealed class UpdateChecker
 {
-    public const string Repository = "giorstergiopoulos-design/san-shmera";
+    public const string Repository = "gs-applabs/san-shmera";
+    /// <summary>The name the account had before: GitHub redirects it, and releases published then keep this address.</summary>
+    public const string LegacyRepository = "giorstergiopoulos-design/san-shmera";
     public const string InstallerName = "ChronikologioSetup.exe";
     public static readonly TimeSpan MinInterval = TimeSpan.FromHours(24);
     private const int MaxJsonBytes = 2 * 1024 * 1024;
@@ -79,7 +81,8 @@ public sealed class UpdateChecker
     /// <summary>Only the files of the releases of our repository are accepted for download.</summary>
     public static bool IsTrustedDownloadUrl(string url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttps && u.Host == "github.com"
-        && u.AbsolutePath.StartsWith($"/{Repository}/releases/download/", StringComparison.Ordinal);
+        && (u.AbsolutePath.StartsWith($"/{Repository}/releases/download/", StringComparison.Ordinal)
+            || u.AbsolutePath.StartsWith($"/{LegacyRepository}/releases/download/", StringComparison.Ordinal));
 
     /// <summary>After the redirects the file must come from GitHub or its CDN.</summary>
     public static bool IsTrustedRedirectTarget(Uri? u) =>
@@ -174,7 +177,7 @@ public sealed class UpdateChecker
 /// <summary>Downloads the installer of an update, proves it with the published SHA-256 and starts it. Nothing runs when the hash does not match.</summary>
 public sealed class UpdateInstaller
 {
-    public const long MaxInstallerBytes = 400L * 1024 * 1024;
+    public const long MaxInstallerBytes = 700L * 1024 * 1024;   // the installer with the photographs is already close to 400 MB
     private readonly HttpClient _http;
 
     public UpdateInstaller(HttpClient? http = null) => _http = http ?? new HttpClient { Timeout = TimeSpan.FromMinutes(20) };
