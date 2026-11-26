@@ -8,7 +8,7 @@
 <p align="center">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%2011-0078D6?logo=windows&logoColor=white" />
   <img alt=".NET" src="https://img.shields.io/badge/.NET-11.0-512BD4?logo=dotnet&logoColor=white" />
-  <img alt="Version" src="https://img.shields.io/badge/version-1.1.0-00B4D8" />
+  <img alt="Version" src="https://img.shields.io/badge/version-1.2.0-00B4D8" />
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green" />
 </p>
 
@@ -24,8 +24,8 @@
 | 🇬🇷 🇨🇾 Χώρες | Ελλάδα και Κύπρος με δικό τους εορτολόγιο και γεγονότα· δεύτερη ημερομηνία του παλαιού ημερολογίου |
 | 🖼 Φωτογραφίες | Πορτρέτα και φωτογραφίες γεγονότων μόνο από το Wikimedia Commons με ελεύθερη άδεια, με δημιουργό, άδεια και σύνδεσμο |
 | 🔎 Αναζήτηση | Ctrl+K: όνομα, άγιος ή γεγονός |
-| 🎨 Εμφάνιση | Θέματα φωτεινό/σκούρο, τέσσερις διατάξεις (Ημέρα, Κάρτες, Ροή, Καρτέλες), ελληνικό και αγγλικό περιβάλλον |
-| 🧩 Opsis | Το plugin δίνει στον Opsis News Crawler τη ροή «Σαν σήμερα» |
+| 🎨 Εμφάνιση | Θέματα φωτεινό/σκούρο, ελληνικό και αγγλικό περιβάλλον |
+| 🧩 Opsis | Το plugin δίνει στον Opsis News Crawler τη ροή «Σαν σήμερα»· χωρίς Opsis, η ροή φτάνει στον News Crawler (0.30.0+) μέσω μικρού αρχείου στον φάκελο του χρήστη |
 
 ### Δεδομένα
 
@@ -73,6 +73,6 @@ build-installer.bat skip-tests   :: χωρίς τεστ
 
 - **Data:** the saints' commemorations come from synaxarion.gr (3,450 entries) and our own calendar; births, deaths and events come from the Greek Wikipedia and are rewritten in our own words. Every entry shows its verification state («Verified» only after an official source was opened). For antiquity and the Middle Ages only events with a documented date are listed.
 - **Images:** only free licences from Wikimedia Commons (public domain, CC0, CC BY), with author, licence and source link.
-- **Install:** download `ChronikologioSetup.exe` from Releases and check the SHA-256 in the `.sha256` file. The installer detects Opsis and installs the plugin. Binaries are not code-signed.
+- **Install:** download `ChronikologioSetup.exe` from Releases and check the SHA-256 in the `.sha256` file. The installer detects Opsis and installs the plugin. Without Opsis, the “On this day” feed still reaches the News Crawler (0.30.0 or newer) through a small file in your user folder. Binaries are not code-signed.
 - **Build:** .NET 11 SDK and Inno Setup 6/7; see the commands above.
 - **Licence:** MIT, see [LICENSE](LICENSE).
