@@ -89,6 +89,25 @@ public sealed class UpdateTests : IDisposable
         Assert.Equal(UpdateOutcome.NoInstaller, UpdateChecker.Parse("{\"tag_name\":\"v0.9.0\",\"assets\":[]}", Now).Outcome);
     }
 
+    /// <summary>
+    /// The bug of 1.2.0 and older: the account was renamed to gs-applabs, GitHub answered with the new addresses and the program accepted only the old ones,
+    /// so every update said "cannot be verified". The literal addresses are written here on purpose.
+    /// </summary>
+    [Theory]
+    [InlineData("gs-applabs")]
+    [InlineData("giorstergiopoulos-design")]
+    public void TheReleaseAddressesOfTheRenamedAccountAreAccepted(string owner)
+    {
+        var url = $"https://github.com/{owner}/san-shmera/releases/download/v9.9.9/ChronikologioSetup.exe";
+        var result = UpdateChecker.Parse(Release("v9.9.9", installerUrl: url, hashUrl: url + ".sha256"), Now);
+        Assert.Equal(UpdateOutcome.Available, result.Outcome);
+        Assert.False(UpdateChecker.IsTrustedDownloadUrl($"https://github.com/{owner}/other-repo/releases/download/v9.9.9/ChronikologioSetup.exe"));
+        Assert.False(UpdateChecker.IsTrustedDownloadUrl($"https://github.com/{owner}-evil/san-shmera/releases/download/v9.9.9/ChronikologioSetup.exe"));
+    }
+
+    [Fact]
+    public void TheDownloadLimitLeavesRoomForTheInstaller() => Assert.True(UpdateInstaller.MaxInstallerBytes >= 600L * 1024 * 1024);
+
     [Fact]
     public async Task NoNetworkIsAnAnswerAndTheNextTryMayComeSoon()
     {
