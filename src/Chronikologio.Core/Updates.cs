@@ -25,25 +25,40 @@ public sealed class UpdateState
 
     public static string DefaultPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Chronikologio", "update-state.json");
 
+    private const int MaxStateBytes = 16 * 1024 * 1024;
+
     public static UpdateState Load(string? path = null)
     {
         try
         {
             path ??= DefaultPath;
-            return File.Exists(path) ? JsonSerializer.Deserialize<UpdateState>(File.ReadAllText(path)) ?? new UpdateState() : new UpdateState();
+            if (!File.Exists(path)) return new UpdateState();
+            using var stream = File.OpenRead(path);
+            if (stream.Length > MaxStateBytes) return new UpdateState();
+            var state = JsonSerializer.Deserialize<UpdateState>(stream) ?? new UpdateState();
+            state.ETag ??= ""; state.CachedJson ??= ""; state.SkippedTag ??= "";
+            if (state.CachedJson.Length > 2 * 1024 * 1024 || state.ETag.Length > 1024 || state.SkippedTag.Length > 128)
+                return new UpdateState();
+            return state;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { return new UpdateState(); }
     }
 
     public void Save(string? path = null)
     {
+        string? temp = null;
         try
         {
-            path ??= DefaultPath;
+            path = Path.GetFullPath(path ?? DefaultPath);
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(this);
+            if (bytes.Length > MaxStateBytes) return;
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, JsonSerializer.Serialize(this));
+            temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None)) stream.Write(bytes);
+            File.Move(temp, path, overwrite: true);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException) { }
+        finally { if (temp is not null) try { File.Delete(temp); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { } }
     }
 }
 
@@ -62,12 +77,13 @@ public sealed class UpdateChecker
 
     private readonly HttpClient _http;
     private readonly string? _statePath;
+    private static readonly HttpClient SharedHttp = new() { Timeout = TimeSpan.FromSeconds(15) };
 
     /// <param name="http">The client (the tests give one with a fake handler); null makes the real one.</param>
     /// <param name="statePath">Where the state is kept (null = in %AppData%).</param>
     public UpdateChecker(HttpClient? http = null, string? statePath = null)
     {
-        _http = http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        _http = http ?? SharedHttp;
         _statePath = statePath;
     }
 
@@ -83,6 +99,15 @@ public sealed class UpdateChecker
         Uri.TryCreate(url, UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttps && u.Host == "github.com"
         && (u.AbsolutePath.StartsWith($"/{Repository}/releases/download/", StringComparison.Ordinal)
             || u.AbsolutePath.StartsWith($"/{LegacyRepository}/releases/download/", StringComparison.Ordinal));
+
+    internal static bool IsTrustedAssetUrl(string url, string tag, string asset)
+    {
+        if (!IsTrustedDownloadUrl(url) || !Uri.TryCreate(url, UriKind.Absolute, out var u) ||
+            !u.IsDefaultPort || u.UserInfo.Length != 0 || u.Query.Length != 0 || u.Fragment.Length != 0 ||
+            !TryParseTag(tag, out _)) return false;
+        var suffix = "/releases/download/" + Uri.EscapeDataString(tag) + "/" + asset;
+        return u.AbsolutePath == "/" + Repository + suffix || u.AbsolutePath == "/" + LegacyRepository + suffix;
+    }
 
     /// <summary>After the redirects the file must come from GitHub or its CDN.</summary>
     public static bool IsTrustedRedirectTarget(Uri? u) =>
@@ -170,7 +195,7 @@ public sealed class UpdateChecker
                 }
             var page = root.TryGetProperty("html_url", out var h) ? h.GetString() ?? "" : "";
             var notes = root.TryGetProperty("body", out var b) ? b.GetString() ?? "" : "";
-            if (!IsTrustedDownloadUrl(installer) || !IsTrustedDownloadUrl(hash)) return new UpdateCheckResult(UpdateOutcome.NoInstaller, null, "no trusted installer and hash file");
+            if (!IsTrustedAssetUrl(installer, tag!, InstallerName) || !IsTrustedAssetUrl(hash, tag!, InstallerName + ".sha256")) return new UpdateCheckResult(UpdateOutcome.NoInstaller, null, "no trusted installer and hash file");
             return new UpdateCheckResult(UpdateOutcome.Available, new UpdateInfo(tag!, version, page, installer, hash, notes, size));
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException) { return new UpdateCheckResult(UpdateOutcome.BadAnswer, null, ex.Message); }
@@ -191,7 +216,8 @@ public sealed class UpdateInstaller
     public const long MaxInstallerBytes = 700L * 1024 * 1024;   // the installer with the photographs is already close to 400 MB
     private readonly HttpClient _http;
 
-    public UpdateInstaller(HttpClient? http = null) => _http = http ?? new HttpClient { Timeout = TimeSpan.FromMinutes(20) };
+    private static readonly HttpClient SharedHttp = new() { Timeout = TimeSpan.FromMinutes(20) };
+    public UpdateInstaller(HttpClient? http = null) => _http = http ?? SharedHttp;
 
     public static string UpdateFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Chronikologio", "update");
 
@@ -218,9 +244,9 @@ public sealed class UpdateInstaller
     /// <summary>Downloads installer and hash to <paramref name="folder"/>; the installer is kept only if its SHA-256 is the published one. Throws <see cref="UpdateException"/> otherwise.</summary>
     public async Task<string> DownloadAsync(UpdateInfo info, string folder, IProgress<int>? progress = null, CancellationToken ct = default)
     {
-        if (!UpdateChecker.IsTrustedDownloadUrl(info.InstallerUrl) || !UpdateChecker.IsTrustedDownloadUrl(info.HashUrl)) throw new UpdateException(UpdateFailure.Untrusted);
+        if (!UpdateChecker.IsTrustedAssetUrl(info.InstallerUrl, info.Tag, UpdateChecker.InstallerName) || !UpdateChecker.IsTrustedAssetUrl(info.HashUrl, info.Tag, UpdateChecker.InstallerName + ".sha256")) throw new UpdateException(UpdateFailure.Untrusted);
         Directory.CreateDirectory(folder);
-        foreach (var old in Directory.GetFiles(folder, "ChronikologioSetup*")) { try { File.Delete(old); } catch (IOException) { } catch (UnauthorizedAccessException) { } }
+        // Each download owns its files. Never delete another process's installer or partial download.
 
         string? expected;
         try
@@ -244,8 +270,10 @@ public sealed class UpdateInstaller
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException) { throw new UpdateException(UpdateFailure.Network, ex.Message); }
         if (expected is null) throw new UpdateException(UpdateFailure.NoHash);
 
-        var part = Path.Combine(folder, InstallerNamePart);
-        var final = Path.Combine(folder, UpdateChecker.InstallerName);
+        var downloadDir = Path.Combine(folder, "download-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(downloadDir);
+        var part = Path.Combine(downloadDir, InstallerNamePart);
+        var final = Path.Combine(downloadDir, UpdateChecker.InstallerName);
         try
         {
             using var response = await _http.GetAsync(info.InstallerUrl, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
@@ -257,16 +285,20 @@ public sealed class UpdateInstaller
             deadline.CancelAfter(TimeSpan.FromMinutes(20));
             using var sha = SHA256.Create();
             await using (var src = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false))
-            await using (var dst = new FileStream(part, FileMode.Create, FileAccess.Write, FileShare.None))
+            await using (var dst = new FileStream(part, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
-                var buf = new byte[81920]; long done = 0; int read;
+                var buf = new byte[81920]; long done = 0; int read; int lastProgress = -1;
                 while ((read = await src.ReadAsync(buf, deadline.Token).ConfigureAwait(false)) > 0)
                 {
                     done += read;
                     if (done > MaxInstallerBytes) throw new UpdateException(UpdateFailure.TooLarge);
                     sha.TransformBlock(buf, 0, read, null, 0);
                     await dst.WriteAsync(buf.AsMemory(0, read), deadline.Token).ConfigureAwait(false);
-                    if (total > 0) progress?.Report((int)(done * 100 / total));
+                    if (total > 0)
+                    {
+                        var percent = (int)Math.Clamp(done * 100 / total, 0, 100);
+                        if (percent > lastProgress) { lastProgress = percent; progress?.Report(percent); }
+                    }
                 }
                 sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
             }
@@ -276,7 +308,7 @@ public sealed class UpdateInstaller
                 File.Delete(part);
                 throw new UpdateException(UpdateFailure.HashMismatch, $"expected {expected}, got {actual}");
             }
-            File.Move(part, final, true);
+            File.Move(part, final, false);
             return final;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
@@ -286,7 +318,7 @@ public sealed class UpdateInstaller
         }
         finally
         {
-            try { File.Delete(part); }
+            try { File.Delete(part); if (!File.Exists(final)) Directory.Delete(downloadDir, recursive: false); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         }
     }
@@ -351,6 +383,6 @@ public static class Authenticode
             return WinVerifyTrust(IntPtr.Zero, action, ref data);
         }
         catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException) { return 0x800B0100; }
-        finally { System.Runtime.InteropServices.Marshal.FreeHGlobal(pFile); }
+        finally { System.Runtime.InteropServices.Marshal.DestroyStructure<WinTrustFileInfo>(pFile); System.Runtime.InteropServices.Marshal.FreeHGlobal(pFile); }
     }
 }
