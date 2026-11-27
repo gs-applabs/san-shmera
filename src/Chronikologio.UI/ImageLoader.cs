@@ -1,6 +1,7 @@
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using SkiaSharp;
+using Chronikologio.Core;
 
 namespace Chronikologio.UI;
 
@@ -32,6 +33,16 @@ public static class ImageLoader
         }
         catch (UnauthorizedAccessException ex) { throw new IOException(ex.Message, ex); }
         return IsWebp(bytes) ? DecodeWebp(bytes) : DecodeGdi(bytes);
+    }
+
+    public static Image Load(DayStore store, ImageRef image)
+    {
+        try
+        {
+            var bytes = store.ReadImageBytes(image);
+            return IsWebp(bytes) ? DecodeWebp(bytes) : DecodeGdi(bytes);
+        }
+        catch (UnauthorizedAccessException ex) { throw new IOException(ex.Message, ex); }
     }
 
     private static bool IsWebp(byte[] b) => b.Length > 12 && b[0] == 'R' && b[1] == 'I' && b[2] == 'F' && b[3] == 'F' && b[8] == 'W' && b[9] == 'E' && b[10] == 'B' && b[11] == 'P';
