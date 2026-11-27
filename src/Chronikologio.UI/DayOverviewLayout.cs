@@ -482,7 +482,7 @@ public sealed class DayOverviewLayout : DayLayout
         {
             try
             {
-                _heroImage = ImageLoader.Load(Store, candidate);
+                _heroImage = ImageLoader.LoadFromStore(Store, candidate);
                 _heroInfo = candidate;
                 var h = 136;
                 _heroPhoto.Width = Math.Min(170, (int)Math.Round(_heroImage.Width * (h / (double)_heroImage.Height))) + _heroPhoto.InsetRight;
@@ -556,7 +556,7 @@ public sealed class DayOverviewLayout : DayLayout
     {
         foreach (var candidate in images ?? Array.Empty<ImageRef>())
         {
-            try { return (ImageLoader.Load(Store, candidate), candidate, candidate.File); }
+            try { return (ImageLoader.LoadFromStore(Store, candidate), candidate, candidate.File); }
             catch (Exception ex) when (ex is ArgumentException or OutOfMemoryException or IOException) { }
         }
         return (null, null, null);
@@ -567,7 +567,7 @@ public sealed class DayOverviewLayout : DayLayout
         Image? image = null; ImageRef? info = null; string? path = null;
         foreach (var candidate in e.Images ?? Array.Empty<ImageRef>())
         {
-            try { image = ImageLoader.Load(Store, candidate); info = candidate; path = candidate.File; break; }
+            try { image = ImageLoader.LoadFromStore(Store, candidate); info = candidate; path = candidate.File; break; }
             catch (Exception ex) when (ex is ArgumentException or OutOfMemoryException or IOException) { path = null; }
         }
         var link = e.Sources.FirstOrDefault(s => Uri.TryCreate(s.Url, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp));
