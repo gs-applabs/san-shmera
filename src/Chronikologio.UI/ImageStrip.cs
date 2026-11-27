@@ -6,6 +6,7 @@ namespace Chronikologio.UI;
 public sealed class ImageStrip : FlowLayoutPanel
 {
     private readonly List<Image> _loaded = new();
+    private Font? _creditFont;
 
     public ImageStrip()
     {
@@ -38,7 +39,11 @@ public sealed class ImageStrip : FlowLayoutPanel
         _lastImages = images.ToList();
         _lastHeight = Height;
         images = _lastImages;
+        SuspendLayout();
+        try
+        {
         Clear();
+        _creditFont = new Font(Font.FontFamily, 7.5f);
         FlowDirection = Vertical ? FlowDirection.TopDown : FlowDirection.LeftToRight;
         foreach (var image in images)
         {
@@ -61,7 +66,7 @@ public sealed class ImageStrip : FlowLayoutPanel
                 // the room left for the picture: the height of the column, less the credit under it and the gaps
                 var creditText = $"{image.Caption}\n{image.Creator} · {image.License}\n{ShortUrl(image.SourceUrl)}";
                 var room = Height - Padding.Vertical - 16;
-                using var small = new Font(Font.FontFamily, 7.5f);
+                var small = _creditFont;
                 for (var pass = 0; pass < 2 && height > 60; pass++)
                 {
                     var creditH = TextRenderer.MeasureText(creditText, small, new Size(width, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.NoPadding).Height + 8;
@@ -76,7 +81,7 @@ public sealed class ImageStrip : FlowLayoutPanel
                 Text = $"{image.Caption}\n{image.Creator} · {image.License}\n{ShortUrl(image.SourceUrl)}",
                 AutoSize = false,
                 ForeColor = ForeColor,
-                Font = new Font(Font.FontFamily, 7.5f)
+                Font = _creditFont
             };
             credit.Size = new Size(width, TextRenderer.MeasureText(credit.Text, credit.Font, new Size(width, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.NoPadding).Height + 14);
             var cell = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoSize = true, Margin = Vertical ? Padding.Empty : new Padding(0, 0, 10, 0) };   // a column that is as wide as the strip must not get a horizontal scroll bar
@@ -84,6 +89,8 @@ public sealed class ImageStrip : FlowLayoutPanel
             cell.Controls.Add(credit);
             Controls.Add(cell);
         }
+        }
+        finally { ResumeLayout(true); }
     }
 
     /// <summary>The address of a source without the long file path, so the line under a photograph does not run out of its column.</summary>
@@ -93,10 +100,11 @@ public sealed class ImageStrip : FlowLayoutPanel
 
     public void Clear()
     {
-        foreach (Control c in Controls) c.Dispose();
+        foreach (Control c in Controls.Cast<Control>().ToArray()) c.Dispose();
         Controls.Clear();
         foreach (var i in _loaded) i.Dispose();
         _loaded.Clear();
+        _creditFont?.Dispose(); _creditFont = null;
     }
 
     protected override void Dispose(bool disposing)
