@@ -375,14 +375,16 @@ public static class Authenticode
         var fileInfo = new WinTrustFileInfo { FilePath = path };
         fileInfo.Size = (uint)System.Runtime.InteropServices.Marshal.SizeOf(fileInfo);
         var pFile = System.Runtime.InteropServices.Marshal.AllocHGlobal(System.Runtime.InteropServices.Marshal.SizeOf(fileInfo));
+        var initialized = false;
         try
         {
             System.Runtime.InteropServices.Marshal.StructureToPtr(fileInfo, pFile, false);
+            initialized = true;
             var data = new WinTrustData { UIChoice = 2 /* none */, RevocationChecks = 0, UnionChoice = 1 /* file */, FileInfo = pFile, StateAction = 0, ProvFlags = 0x10 /* no revocation UI */ };
             data.Size = (uint)System.Runtime.InteropServices.Marshal.SizeOf(data);
             return WinVerifyTrust(IntPtr.Zero, action, ref data);
         }
         catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException) { return 0x800B0100; }
-        finally { System.Runtime.InteropServices.Marshal.DestroyStructure<WinTrustFileInfo>(pFile); System.Runtime.InteropServices.Marshal.FreeHGlobal(pFile); }
+        finally { if (initialized) System.Runtime.InteropServices.Marshal.DestroyStructure<WinTrustFileInfo>(pFile); System.Runtime.InteropServices.Marshal.FreeHGlobal(pFile); }
     }
 }
