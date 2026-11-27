@@ -53,16 +53,6 @@ public sealed class DayStore
     public byte[] ReadImageBytes(ImageRef image)
     {
         var key = MediaArchive.Key(image.File) ?? throw new IOException("Invalid image path.");
-        var path = ImagePath(image);
-        if (path is not null)
-        {
-            using var stream = File.OpenRead(path);
-            if (stream.Length <= 0 || stream.Length > MediaArchive.MaxImageBytes)
-                throw new IOException("Invalid image size.");
-            var bytes = new byte[(int)stream.Length];
-            stream.ReadExactly(bytes);
-            return bytes;
-        }
         MediaArchive? archive;
         lock (_mediaGate)
         {
@@ -74,7 +64,16 @@ public sealed class DayStore
             }
             archive = _media;
         }
-        return archive?.Read(key) ?? throw new FileNotFoundException("Image not present in the library.", key);
+        // A packed release is authoritative: do not accidentally read stale loose files after upgrading.
+        if (archive is not null)
+            return archive.Read(key) ?? throw new FileNotFoundException("Image not present in the packed library.", key);
+        var path = ImagePath(image) ?? throw new FileNotFoundException("Image not present in the library.", key);
+        using var stream = File.OpenRead(path);
+        if (stream.Length <= 0 || stream.Length > MediaArchive.MaxImageBytes)
+            throw new IOException("Invalid image size.");
+        var bytes = new byte[(int)stream.Length];
+        stream.ReadExactly(bytes);
+        return bytes;
     }
 
     public static DayStore Load(string dataRoot, string region = "gr")
