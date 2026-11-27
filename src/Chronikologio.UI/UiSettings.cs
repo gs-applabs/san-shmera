@@ -10,6 +10,7 @@ public sealed class UiSettings
 
     /// <summary>Opt-in decorative animations; static graphics keep the same colours and artwork.</summary>
     public bool Animations { get; set; }
+    public string AstronomySite { get; set; } = "auto";
 
     /// <summary>The stand-alone app looks for a newer version in the official releases (at most once a day). The Opsis plugin never does: Opsis updates its plugins.</summary>
     public bool CheckForUpdates { get; set; } = true;
@@ -43,6 +44,7 @@ public sealed class UiSettings
             if (!ChronikologioTheme.Names.Contains(s.Theme)) s.Theme = "system";
             if (!DayStore.Regions.Contains(s.Region)) s.Region = "gr";
             if (s.Language is not ("auto" or "el" or "en")) s.Language = "auto";
+            if (s.AstronomySite != "auto" && !SkyCalendar.Sites.Any(x => x.Id == s.AstronomySite)) s.AstronomySite = "auto";
             s.Width = Math.Clamp(s.Width, MinWidth, 4000);
             s.Height = Math.Clamp(s.Height, MinHeight, 3000);
             return s;
