@@ -133,12 +133,10 @@ public sealed class EventCarousel : Panel
         if (_store is null || e.Images is null) return null;
         foreach (var candidate in e.Images)
         {
-            var path = _store.ImagePath(candidate);
-            if (path is null) continue;
             try
             {
                 info = candidate;
-                return ImageLoader.Load(path);
+                return ImageLoader.Load(_store, candidate);
             }
             catch (Exception ex) when (ex is ArgumentException or OutOfMemoryException or IOException) { }
         }
