@@ -8,11 +8,14 @@ internal static class Program
     private static void Main()
     {
         ApplicationConfiguration.Initialize();
-        var window = new MainWindow(Path.Combine(AppContext.BaseDirectory, "data"));
+        using var window = new MainWindow(Path.Combine(AppContext.BaseDirectory, "data"));
+        using var paintAudit = PaintAudit.AttachIfRequested(window);
         // the icon of the executable (chronikologio.ico) for the title bar and the taskbar
         try { if (Environment.ProcessPath is { } exe) window.Icon = Icon.ExtractAssociatedIcon(exe); }
         catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException) { }
-        window.EnableUpdates();   // only the stand-alone app: inside Opsis the plugin is updated by Opsis
+        // The isolated diagnostics mode suppresses unrelated network I/O; ordinary startup is unchanged.
+        if (Environment.GetEnvironmentVariable("CHRON_PAINT_AUDIT") is null ||
+            Environment.GetEnvironmentVariable("CHRON_AUDIT_NO_UPDATES") != "1") window.EnableUpdates();
         // The lines of "On this day" for the News Crawler when it runs without Opsis: a small file, written only when its content changes.
         // Keep only the newest queued request; writes from this process are serialized.
         long generation = 0;
