@@ -90,8 +90,7 @@ public sealed class SearchBar : Panel
         var fill = palette.Surface;
         using (var brush = new SolidBrush(fill)) g.FillPath(brush, path);
         using (var pen = new Pen(_box.Focused ? palette.Accent : Color.FromArgb(70, palette.Text), _box.Focused ? 1.6f : 1f)) g.DrawPath(pen, path);
-        if (_box.BackColor != fill) _box.BackColor = fill;
-        if (_box.ForeColor != palette.Text) _box.ForeColor = palette.Text;
+        // Child appearance is assigned in Restyle, never during a paint callback.
     }
 
     private void AttachList()
