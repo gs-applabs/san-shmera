@@ -29,6 +29,33 @@ public sealed class CalendarGrid : Control
     public Color Muted { get; set; } = Color.Gray;
     public event Action<DateOnly>? SelectedChanged;
 
+    // Only the visible month is cached. The markers do not depend on the language
+    // and both callers share the same DayView for a date.
+    public void BindStore(Chronikologio.Core.DayStore store)
+    {
+        var markers = new Dictionary<DateOnly, (bool HasData, bool IsMajor)>();
+        (int Year, int Month) cachedMonth = default;
+        (bool HasData, bool IsMajor) GetMarkers(DateOnly date)
+        {
+            if (cachedMonth != (date.Year, date.Month))
+            {
+                markers.Clear();
+                cachedMonth = (date.Year, date.Month);
+            }
+            if (!markers.TryGetValue(date, out var value))
+            {
+                var day = store.GetDay(date);
+                value = (day.Commemorations.Count + day.Events.Count > 0, day.Commemorations.Any(c => c.IsMajorFeast));
+                markers.Add(date, value);
+            }
+            return value;
+        }
+        HasData = date => GetMarkers(date).HasData;
+        IsMajor = date => GetMarkers(date).IsMajor;
+        IsDayOff = date => Chronikologio.Core.Holidays.IsDayOff(date, store.Region);
+        Invalidate();
+    }
+
     public CalendarGrid() => SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
 
     public DateOnly Month
@@ -64,12 +91,14 @@ public sealed class CalendarGrid : Control
         var g = e.Graphics;
         g.Clear(BackColor);
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-        var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+        using var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
         var headH = Font.Height + 6f;
         using var muted = new SolidBrush(Muted);
         using var fore = new SolidBrush(ForeColor);
         using var accent = new SolidBrush(Accent);
         using var onAccent = new SolidBrush(DayLayout.OnAccent(Accent));
+        using var bold = new Font(Font, FontStyle.Bold);
+        using var red = new SolidBrush(Color.FromArgb(226, 75, 74));
 
         var heads = Heads;
         for (var i = 0; i < 7; i++)
@@ -96,10 +125,8 @@ public sealed class CalendarGrid : Control
                 g.DrawEllipse(pen, ring);
             }
             var major = IsMajor(date);
-            using var bold = major ? new Font(Font, FontStyle.Bold) : null;
             var off = IsDayOff(date);
-            using var red = new SolidBrush(Color.FromArgb(226, 75, 74));
-            g.DrawString(d.ToString(CultureInfo.InvariantCulture), bold ?? Font, selected ? onAccent : off ? red : major ? accent : fore, tr, sf);
+            g.DrawString(d.ToString(CultureInfo.InvariantCulture), major ? bold : Font, selected ? onAccent : off ? red : major ? accent : fore, tr, sf);
             if (HasData(date) && !selected)
             {
                 // A dot for an ordinary day, a longer bar for a great feast.
@@ -113,7 +140,7 @@ public sealed class CalendarGrid : Control
     {
         base.OnMouseDown(e);
         var headH = Font.Height + 6f;
-        if (e.Y < headH) return;
+        if (e.Y < headH || e.Y >= Height || e.X < 0 || e.X >= Width || Width <= 0 || Height <= headH) return;
         var col = (int)(e.X / (Width / 7f));
         var row = (int)((e.Y - headH) / ((Height - headH) / 6f));
         var day = row * 7 + col - LeadingBlanks + 1;
