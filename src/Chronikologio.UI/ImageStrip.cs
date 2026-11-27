@@ -42,12 +42,10 @@ public sealed class ImageStrip : FlowLayoutPanel
         FlowDirection = Vertical ? FlowDirection.TopDown : FlowDirection.LeftToRight;
         foreach (var image in images)
         {
-            var path = store.ImagePath(image);
-            if (path is null) continue;
             Image bitmap;
             try
             {
-                bitmap = ImageLoader.Load(path);   // read completely, so the file is not locked while the image is shown
+                bitmap = ImageLoader.Load(store, image);   // read completely, so the file is not locked while the image is shown
             }
             catch (Exception ex) when (ex is ArgumentException or OutOfMemoryException or IOException)
             {
