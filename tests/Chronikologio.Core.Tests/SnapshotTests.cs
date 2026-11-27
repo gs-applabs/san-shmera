@@ -53,6 +53,21 @@ public class SnapshotTests
     }
 
     [Fact]
+    public void RepeatedDateChecksDoNotQueueHundredsOfRebuilds()
+    {
+        var today = new DateOnly(2026, 7, 20);
+        using var service = new DailySnapshotService(FindData(), "gr", () => today);
+        service.BuildNow();
+        var raised = 0;
+        service.Changed += () => Interlocked.Increment(ref raised);
+        today = today.AddDays(1);
+        Parallel.For(0, 1000, _ => service.CheckDate());
+        Assert.True(WaitFor(() => Volatile.Read(ref raised) >= 1));
+        Assert.Equal(today, service.Current!.Date);
+        Assert.Equal(1, Volatile.Read(ref raised));
+    }
+
+    [Fact]
     public void TheLinesForTheBarsAreShortAndFew()
     {
         var store = DayStore.Load(FindData(), "gr");
