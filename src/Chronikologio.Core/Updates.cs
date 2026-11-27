@@ -116,7 +116,18 @@ public sealed class UpdateChecker
             else
             {
                 if (response.Content.Headers.ContentLength is > MaxJsonBytes) return new UpdateCheckResult(UpdateOutcome.BadAnswer, null, "too large");
-                json = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                deadline.CancelAfter(TimeSpan.FromSeconds(15));
+                await using var body = await response.Content.ReadAsStreamAsync(deadline.Token).ConfigureAwait(false);
+                using var data = new MemoryStream();
+                var buffer = new byte[8192];
+                int read;
+                while ((read = await body.ReadAsync(buffer, deadline.Token).ConfigureAwait(false)) > 0)
+                {
+                    if (data.Length + read > MaxJsonBytes) return new UpdateCheckResult(UpdateOutcome.BadAnswer, null, "too large");
+                    data.Write(buffer, 0, read);
+                }
+                json = Encoding.UTF8.GetString(data.ToArray());
                 if (json.Length > MaxJsonBytes) return new UpdateCheckResult(UpdateOutcome.BadAnswer, null, "too large");
                 state.ETag = response.Headers.ETag?.ToString() ?? "";
                 state.CachedJson = json;
@@ -162,7 +173,7 @@ public sealed class UpdateChecker
             if (!IsTrustedDownloadUrl(installer) || !IsTrustedDownloadUrl(hash)) return new UpdateCheckResult(UpdateOutcome.NoInstaller, null, "no trusted installer and hash file");
             return new UpdateCheckResult(UpdateOutcome.Available, new UpdateInfo(tag!, version, page, installer, hash, notes, size));
         }
-        catch (JsonException ex) { return new UpdateCheckResult(UpdateOutcome.BadAnswer, null, ex.Message); }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException) { return new UpdateCheckResult(UpdateOutcome.BadAnswer, null, ex.Message); }
     }
 
     /// <summary>The user chose "skip this version": it is not offered again (a manual check shows it anyway).</summary>
@@ -218,7 +229,16 @@ public sealed class UpdateInstaller
             if (!hashResponse.IsSuccessStatusCode || !UpdateChecker.IsTrustedRedirectTarget(hashResponse.RequestMessage?.RequestUri)) throw new UpdateException(UpdateFailure.Network);
             var buffer = new byte[4096];
             await using var hs = await hashResponse.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-            var n = await hs.ReadAsync(buffer, ct).ConfigureAwait(false);   // the hash file is tiny: 4 KB are read at most
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            deadline.CancelAfter(TimeSpan.FromSeconds(30));
+            var n = 0;
+            while (n < buffer.Length)
+            {
+                var read = await hs.ReadAsync(buffer.AsMemory(n), deadline.Token).ConfigureAwait(false);
+                if (read == 0) break;
+                n += read;
+            }
+            if (n == buffer.Length) throw new UpdateException(UpdateFailure.NoHash);
             expected = ParseHash(Encoding.UTF8.GetString(buffer, 0, n));
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException) { throw new UpdateException(UpdateFailure.Network, ex.Message); }
@@ -233,17 +253,19 @@ public sealed class UpdateInstaller
             if (!UpdateChecker.IsTrustedRedirectTarget(response.RequestMessage?.RequestUri)) throw new UpdateException(UpdateFailure.Untrusted);
             var total = response.Content.Headers.ContentLength ?? info.Size;
             if (total > MaxInstallerBytes) throw new UpdateException(UpdateFailure.TooLarge);
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            deadline.CancelAfter(TimeSpan.FromMinutes(20));
             using var sha = SHA256.Create();
             await using (var src = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false))
             await using (var dst = new FileStream(part, FileMode.Create, FileAccess.Write, FileShare.None))
             {
                 var buf = new byte[81920]; long done = 0; int read;
-                while ((read = await src.ReadAsync(buf, ct).ConfigureAwait(false)) > 0)
+                while ((read = await src.ReadAsync(buf, deadline.Token).ConfigureAwait(false)) > 0)
                 {
                     done += read;
                     if (done > MaxInstallerBytes) throw new UpdateException(UpdateFailure.TooLarge);
                     sha.TransformBlock(buf, 0, read, null, 0);
-                    await dst.WriteAsync(buf.AsMemory(0, read), ct).ConfigureAwait(false);
+                    await dst.WriteAsync(buf.AsMemory(0, read), deadline.Token).ConfigureAwait(false);
                     if (total > 0) progress?.Report((int)(done * 100 / total));
                 }
                 sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
@@ -261,6 +283,11 @@ public sealed class UpdateInstaller
         {
             try { if (File.Exists(part)) File.Delete(part); } catch (IOException) { }
             throw new UpdateException(UpdateFailure.Network, ex.Message);
+        }
+        finally
+        {
+            try { File.Delete(part); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         }
     }
 
