@@ -1,0 +1,98 @@
+name: package-footprint
+
+on:
+  pull_request:
+    paths: ['installer/**', 'tools/pack_media.py', 'build-installer.bat', 'src/**', '.github/workflows/package-footprint.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chron-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '11.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Find Inno Setup
+        shell: pwsh
+        run: |
+          function Find-Iscc {
+            @("$env:LOCALAPPDATA\Programs", $env:ProgramFiles, ${env:ProgramFiles(x86)}) |
+              Where-Object { $_ -and (Test-Path $_) } |
+              ForEach-Object { Get-ChildItem $_ -Directory -Filter 'Inno Setup*' -ErrorAction SilentlyContinue } |
+              Sort-Object Name -Descending |
+              ForEach-Object { Join-Path $_.FullName 'ISCC.exe' } |
+              Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          $iscc = Find-Iscc
+          if (!$iscc) { choco install innosetup -y --no-progress; if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }; $iscc = Find-Iscc }
+          if (!$iscc) { throw 'ISCC not found' }
+          "CHRON_ISCC=$iscc" >> $env:GITHUB_ENV
+      - name: Build packed installer
+        shell: cmd
+        run: build-installer.bat skip-tests < nul
+      - name: Verify clean standalone install and measure
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $new = (Get-Item Output/ChronikologioSetup.exe).Length
+          $dest = Join-Path $env:RUNNER_TEMP 'chron-clean'
+          $p = Start-Process (Resolve-Path Output/ChronikologioSetup.exe) -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/COMPONENTS=app',"/DIR=`"$dest`"","/LOG=`"$env:RUNNER_TEMP\chron-install.log`"" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Setup failed: $($p.ExitCode)" }
+          $data = @(Get-ChildItem (Join-Path $dest 'data') -Recurse -File)
+          if ($data.Count -ne 3) { throw "Expected three packed library files, found $($data.Count)" }
+          foreach ($name in @('media.pack','media.index','texts.pack')) {
+            if (!(Test-Path (Join-Path $dest "data/$name"))) { throw "Missing $name" }
+          }
+          $app = Start-Process (Join-Path $dest 'Chronikologio.exe') -PassThru
+          try {
+            $sw = [Diagnostics.Stopwatch]::StartNew()
+            do { Start-Sleep -Milliseconds 250; $app.Refresh(); if ($app.HasExited) { throw 'Installed app exited' } } until ($app.MainWindowHandle -ne 0 -or $sw.Elapsed.TotalSeconds -ge 20)
+            if ($app.MainWindowHandle -eq 0) { throw 'Installed app window not found' }
+          } finally {
+            if (!$app.HasExited) { [void]$app.CloseMainWindow(); if (!$app.WaitForExit(5000)) { $app.Kill(); throw 'Installed app did not close' } }
+            $app.Dispose()
+          }
+          $report = [ordered]@{ packedInstallerBytes = $new; installedDataFiles = $data.Count; installedDataBytes = ($data | Measure-Object Length -Sum).Sum }
+          $report | ConvertTo-Json | Set-Content package-metrics.json
+          $uninstall = Start-Process (Join-Path $dest 'unins000.exe') -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "Uninstall failed: $($uninstall.ExitCode)" }
+      - name: Compare with equivalent loose duplicate data installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Same binaries, same compression settings. Only the packaging layout changes.
+          foreach ($target in @('app','plugin')) {
+            $folder = "dist/$target/data"
+            Remove-Item "$folder/media.pack","$folder/media.index","$folder/texts.pack"
+            Copy-Item data/* $folder -Recurse -Force
+          }
+          $oldScript = (Get-Content installer/Chronikologio.iss -Raw).Replace(' Excludes: "\data\*";','')
+          $oldScript = ($oldScript -split "`r?`n" | Where-Object { $_ -notmatch '^Source: "shared-library\.txt"' }) -join "`r`n"
+          $oldScript | Set-Content installer/FootprintBaseline.iss -Encoding utf8BOM
+          & $env:CHRON_ISCC /Q /FFootprintBaseline installer/FootprintBaseline.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Baseline installer compilation failed' }
+          $report = Get-Content package-metrics.json -Raw | ConvertFrom-Json
+          $old = (Get-Item Output/FootprintBaseline.exe).Length
+          $report | Add-Member -NotePropertyName baselineInstallerBytes -NotePropertyValue $old
+          $report | Add-Member -NotePropertyName installerSavingsBytes -NotePropertyValue ($old - $report.packedInstallerBytes)
+          $report | ConvertTo-Json | Tee-Object -FilePath package-metrics.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: package-footprint
+          path: |
+            package-metrics.json
+            ${{ runner.temp }}/chron-install.log
+          if-no-files-found: warn
