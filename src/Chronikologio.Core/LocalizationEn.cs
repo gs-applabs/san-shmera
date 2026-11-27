@@ -159,7 +159,7 @@ internal static class LocalizationEn
             "As a plugin of Opsis, the calendar replaces the built-in one and the “On this day” feed can appear in the bars of the News Crawler.\n" +
             "Without Opsis: when Chronikologio and the News Crawler (0.30.0 or newer) run as separate programs, the feed still appears in the bars. Open Chronikologio at least once a week.",
         ["about.format"] = "Chronikologio — version {0}",
-        ["help.text"] = "Ctrl+T: change theme\nCtrl+,: settings\nCtrl+K or Ctrl+F: search\nCtrl+Home: today\nCtrl+F: search\nF1: user guide\n\n" +
+        ["help.text"] = "Ctrl+T: change theme\nCtrl+,: settings\nCtrl+K or Ctrl+F: search\nCtrl+Home: today\nCtrl+1: calendar tools\nCtrl+2: astronomy\nF1: user guide\n\n" +
                         "The flag at the top left changes the country, that is the calendar and, unless you chose a language, the language of the app.\n" +
                         "A double click on the short text, or the button under it, opens the full text with the sources.",
         ["short.noentries"] = "There are no entries for this day yet.",
