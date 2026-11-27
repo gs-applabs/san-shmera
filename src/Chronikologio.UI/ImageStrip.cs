@@ -57,7 +57,8 @@ public sealed class ImageStrip : FlowLayoutPanel
                     }
                 }
                 box.Size = new Size(width, height);
-                }
+                credit.Size = new Size(width, TextRenderer.MeasureText(credit.Text, credit.Font, new Size(width, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.NoPadding).Height + 14);
+            }
         }
         finally { ResumeLayout(true); _arranging = false; }
     }
@@ -94,7 +95,6 @@ public sealed class ImageStrip : FlowLayoutPanel
                 ForeColor = ForeColor,
                 Font = _creditFont
             };
-            credit.Size = new Size(width, TextRenderer.MeasureText(credit.Text, credit.Font, new Size(width, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.NoPadding).Height + 14);
             var cell = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoSize = true, Margin = Vertical ? Padding.Empty : new Padding(0, 0, 10, 0) };   // a column that is as wide as the strip must not get a horizontal scroll bar
             cell.Controls.Add(box);
             cell.Controls.Add(credit);
