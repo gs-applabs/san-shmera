@@ -21,6 +21,11 @@
 
 **[Browse application screenshots / Προβολή στιγμιοτύπων](docs/product-snapshots/README.md)** · [Capture workflow / Μηχανισμός λήψης](../../actions/workflows/product-snapshots.yml)
 
+**[30-second video tour](https://github.com/gs-applabs/gs-applabs/blob/main/assets/showcase/chronikologio.mp4) · [Animated screenshot preview](https://github.com/gs-applabs/gs-applabs/blob/main/assets/showcase/chronikologio.gif) · [Social preview](https://github.com/gs-applabs/gs-applabs/blob/main/assets/showcase/chronikologio-social.png)**
+
+<sub>Real screenshot slideshows, not live recordings. / Παρουσιάσεις πραγματικών στιγμιοτύπων, όχι ζωντανή καταγραφή.</sub>
+
+
 <sub>Actual application rendering on Windows CI. / Πραγματική απεικόνιση σε Windows CI.</sub>
 
 ## At a glance / Με μια ματιά
