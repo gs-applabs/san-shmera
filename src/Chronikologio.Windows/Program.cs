@@ -18,18 +18,9 @@ internal static class Program
             Environment.GetEnvironmentVariable("CHRON_AUDIT_NO_UPDATES") != "1") window.EnableUpdates();
         // The lines of "On this day" for the News Crawler when it runs without Opsis: a small file, written only when its content changes.
         // Keep only the newest queued request; writes from this process are serialized.
-        long generation = 0;
-        Task pending = Task.CompletedTask;
-        window.PublishFeed = store =>
-        {
-            var request = Interlocked.Increment(ref generation);
-            pending = pending.ContinueWith(previous =>
-            {
-                if (previous.IsFaulted) System.Diagnostics.Debug.WriteLine(previous.Exception);
-                if (request == Interlocked.Read(ref generation))
-                    Chronikologio.Core.FeedExchange.TryWrite(store);
-            }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
-        };
+        using var publisher = new Chronikologio.Core.LatestWork<Chronikologio.Core.DayStore>(
+            store => Chronikologio.Core.FeedExchange.TryWrite(store));
+        window.PublishFeed = publisher.Submit;
         var publishedDate = DateOnly.FromDateTime(DateTime.Today);
         using var dayTimer = new System.Windows.Forms.Timer { Interval = 60_000 };
         dayTimer.Tick += (_, _) =>
@@ -43,8 +34,7 @@ internal static class Program
         dayTimer.Start();
         Application.Run(window);
         dayTimer.Stop();
-        // Drain the serial chain before process exit.
-        try { pending.GetAwaiter().GetResult(); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        window.PublishFeed = null;
+        // LatestWork drains at most the current and newest pending value on dispose.
     }
 }
