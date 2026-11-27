@@ -6,27 +6,22 @@
 
 <p align="center"><strong>Discover today's name days, holidays and historical events for Greece and Cyprus.</strong><br/>Η ιστορία και το εορτολόγιο κάθε ημέρας.</p>
 
-<p align="center"><a href="https://github.com/gs-applabs/san-shmera/releases/download/v1.2.1/ChronikologioSetup.exe"><img alt="Download v1.2.1" src="https://img.shields.io/badge/DOWNLOAD-v1.2.1-087EA4?style=for-the-badge"/></a> <a href="https://github.com/gs-applabs/san-shmera/releases/latest"><img alt="Release notes" src="https://img.shields.io/badge/RELEASE-NOTES-334155?style=for-the-badge"/></a></p>
+<p align="center"><a href="https://github.com/gs-applabs/san-shmera/releases/latest"><img alt="Download latest published release" src="https://img.shields.io/badge/DOWNLOAD-LATEST%20RELEASE-087EA4?style=for-the-badge"/></a> <a href="docs/SHOWCASE.md"><img alt="Explore screenshots" src="https://img.shields.io/badge/EXPLORE-SCREENSHOTS-334155?style=for-the-badge"/></a></p>
 
 <p align="center"><a href="#at-a-glance--με-μια-ματιά">Overview / Επισκόπηση</a> · <a href="#full-documentation--αναλυτική-τεκμηρίωση">Full documentation / Τεκμηρίωση</a> · <a href="https://github.com/gs-applabs/san-shmera/issues">Support / Υποστήριξη</a> · <a href="https://github.com/gs-applabs">GS App Labs</a></p>
 
-## Current screenshot gallery / Νέα στιγμιότυπα
+## Visual showcase / Οπτική παρουσίαση
 
 <table>
 <tr>
-<td width="50%" valign="top"><a href="docs/product-snapshots/window-day-light.png"><img src="docs/product-snapshots/window-day-light.png" width="100%" alt="Daily calendar / Ημερολόγιο ημέρας"/></a><br/><sub>Daily calendar / Ημερολόγιο ημέρας</sub></td>
-<td width="50%" valign="top"><a href="docs/product-snapshots/details-dark-0325.png"><img src="docs/product-snapshots/details-dark-0325.png" width="100%" alt="Historical details / Ιστορικά γεγονότα"/></a><br/><sub>Historical details / Ιστορικά γεγονότα</sub></td>
+<td width="50%" valign="top"><a href="docs/SHOWCASE.md"><img src="docs/product-snapshots/window-day-light.png" alt="window day light" width="100%"/></a><br/><sub>window day light</sub></td>
+<td width="50%" valign="top"><a href="docs/SHOWCASE.md"><img src="docs/product-snapshots/window-day-dark.png" alt="window day dark" width="100%"/></a><br/><sub>window day dark</sub></td>
 </tr>
 </table>
 
-**[Browse application screenshots / Προβολή στιγμιοτύπων](docs/product-snapshots/README.md)** · [Capture workflow / Μηχανισμός λήψης](../../actions/workflows/product-snapshots.yml)
+**[Explore 14 screenshots / Εξερεύνηση στιγμιοτύπων](docs/SHOWCASE.md)** · [Original capture index](docs/product-snapshots/README.md) · [Media kit](https://github.com/gs-applabs/gs-applabs/tree/main/assets/showcase)
 
-**[30-second video tour](https://github.com/gs-applabs/gs-applabs/blob/main/assets/showcase/chronikologio.mp4) · [Animated screenshot preview](https://github.com/gs-applabs/gs-applabs/blob/main/assets/showcase/chronikologio.gif) · [Social preview](https://github.com/gs-applabs/gs-applabs/blob/main/assets/showcase/chronikologio-social.png)**
-
-<sub>Real screenshot slideshows, not live recordings. / Παρουσιάσεις πραγματικών στιγμιοτύπων, όχι ζωντανή καταγραφή.</sub>
-
-
-<sub>Actual application rendering on Windows CI. / Πραγματική απεικόνιση σε Windows CI.</sub>
+<sub>Actual UI previews from development commit `a4d12577d593`; may differ from the latest published installer. / Πραγματικές εικόνες συγκεκριμένου build ανάπτυξης, ενδέχεται να διαφέρουν από τη δημοσιευμένη έκδοση.</sub>
 
 ## At a glance / Με μια ματιά
 
@@ -37,6 +32,8 @@
 | **Connect / Διασύνδεση** | OPSIS plugin and News Crawler feed / Πρόσθετο και ροή ειδήσεων |
 
 ### Get started / Ξεκίνημα
+
+For the newest installer always use [latest published release](https://github.com/gs-applabs/san-shmera/releases/latest). Version-specific links below are retained as reference. / Για τη νεότερη έκδοση χρησιμοποίησε τον σύνδεσμο τελευταίας δημοσιευμένης έκδοσης.
 
 - **Installer:** [ChronikologioSetup.exe](https://github.com/gs-applabs/san-shmera/releases/download/v1.2.1/ChronikologioSetup.exe) · [SHA-256](https://github.com/gs-applabs/san-shmera/releases/download/v1.2.1/ChronikologioSetup.exe.sha256)
 - **Requirements / Απαιτήσεις:** Windows 11 · .NET 11 Desktop Runtime.
