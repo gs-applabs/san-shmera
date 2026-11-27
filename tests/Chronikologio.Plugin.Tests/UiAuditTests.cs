@@ -166,6 +166,50 @@ public class UiAuditTests : IDisposable
         Assert.True(grouped.Count == 0, Environment.NewLine + string.Join(Environment.NewLine, grouped.Take(60)) + $"{Environment.NewLine}({grouped.Count} different problems, {report.Count} in total)");
     }
 
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern uint GetGuiResources(IntPtr process, uint flags);
+
+    [Fact]
+    public void RepeatedDayNavigationDoesNotAccumulateGuiHandles()
+    {
+        using var window = Open(1100, 700);
+        window.ChooseTheme("dark");
+        var first = new DateOnly(2026, 1, 1);
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
+        void Navigate(int count)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                window.SetDate(first.AddDays(i % 365));
+                Application.DoEvents();
+            }
+            window.SetDate(first);
+            Application.DoEvents();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            process.Refresh();
+        }
+        Navigate(20);
+        var beforeGdi = GetGuiResources(process.Handle, 0);
+        var beforeUser = GetGuiResources(process.Handle, 1);
+        var beforeMemory = process.PrivateMemorySize64;
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        Navigate(100);
+        var afterGdi = GetGuiResources(process.Handle, 0);
+        var afterUser = GetGuiResources(process.Handle, 1);
+        var result = new { navigations = 100, elapsedMs = watch.ElapsedMilliseconds, beforeGdi, afterGdi, beforeUser, afterUser, beforeMemory, afterMemory = process.PrivateMemorySize64 };
+        var dir = Environment.GetEnvironmentVariable("CHRON_METRICS_DIR");
+        if (!string.IsNullOrEmpty(dir))
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "navigation-metrics.json"), System.Text.Json.JsonSerializer.Serialize(result));
+        }
+        Assert.True(beforeGdi > 0 && beforeUser > 0, "Windows resource counters unavailable");
+        Assert.True(afterGdi <= beforeGdi + 100, $"GDI handles grew: {beforeGdi} -> {afterGdi}");
+        Assert.True(afterUser <= beforeUser + 100, $"USER handles grew: {beforeUser} -> {afterUser}");
+    }
+
     [Fact]
     public void TheWindowCannotBeMadeSmallerThanWhatFitsItsControls()
     {
