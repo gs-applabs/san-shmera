@@ -282,6 +282,50 @@ public sealed class UpdateTests : IDisposable
     public void TheHashFileIsReadStrictly(string text, bool ok) => Assert.Equal(ok, UpdateInstaller.ParseHash(text) is not null);
 
     [Fact]
+    public async Task RedirectIsRejectedBeforeRequestingUntrustedHost()
+    {
+        var fake = new Fake { Reply = req =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.Redirect);
+            response.Headers.Location = new Uri("https://raw.githubusercontent.com/other/project/main/hash");
+            return response;
+        } };
+        var ex = await Assert.ThrowsAsync<UpdateException>(() => new UpdateInstaller(new HttpClient(fake)).DownloadAsync(Info(), _dir));
+        Assert.Equal(UpdateFailure.Untrusted, ex.Failure);
+        Assert.Equal(1, fake.Calls);
+    }
+
+    [Fact]
+    public async Task AlteredDownloadCannotReachSignatureOrShell()
+    {
+        var download = await new UpdateInstaller(new HttpClient(Server(Hash(Installer), Installer))).DownloadVerifiedAsync(Info(), _dir);
+        File.WriteAllText(download.Path, "changed");
+        var invoked = false;
+        Assert.False(UpdateInstaller.LaunchVerified(download, _ => { invoked = true; return SignatureState.Invalid; }));
+        Assert.False(invoked);
+    }
+
+    [Fact]
+    public void PruningLeavesRecentAndUnexpectedFilesUntouched()
+    {
+        var now = DateTime.UtcNow;
+        string Make(bool old, bool unexpected)
+        {
+            var dir = Directory.CreateDirectory(Path.Combine(_dir, "download-" + Guid.NewGuid().ToString("N")));
+            var file = Path.Combine(dir.FullName, UpdateChecker.InstallerName);
+            File.WriteAllText(file, "test");
+            if (unexpected) File.WriteAllText(Path.Combine(dir.FullName, "personal.txt"), "keep");
+            File.SetLastWriteTimeUtc(file, now.AddDays(old ? -35 : -1));
+            Directory.SetLastWriteTimeUtc(dir.FullName, now.AddDays(old ? -35 : -1));
+            return file;
+        }
+        var stale = Make(true,false); var recent = Make(false,false); var personal = Make(true,true);
+        Assert.Equal(1, UpdateInstaller.PruneOldDownloads(_dir, now));
+        Assert.False(File.Exists(stale));
+        Assert.True(File.Exists(recent)); Assert.True(File.Exists(personal));
+    }
+
+    [Fact]
     public void AnInvalidSignatureStopsTheLaunch()
     {
         var file = Path.Combine(_dir, "ChronikologioSetup.exe");
