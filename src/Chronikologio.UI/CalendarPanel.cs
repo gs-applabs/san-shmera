@@ -202,11 +202,9 @@ public sealed class CalendarPanel : UserControl
         _thumb.Width = 0;
         foreach (var image in day.SaintImages)
         {
-            var path = _store.ImagePath(image);
-            if (path is null) continue;
             try
             {
-                _thumb.Image = ImageLoader.Load(path);
+                _thumb.Image = ImageLoader.Load(_store, image);
             }
             catch (Exception ex) when (ex is ArgumentException or OutOfMemoryException or IOException)
             {
