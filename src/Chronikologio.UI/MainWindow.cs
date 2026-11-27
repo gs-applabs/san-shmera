@@ -31,6 +31,7 @@ public sealed class MainWindow : Form
         _dataRoot = dataRoot;
         _settingsPath = settingsPath;
         _settings = UiSettings.Load(settingsPath);
+        WaveClock.Enabled = _settings.Animations;
         _store = DayStore.Load(dataRoot, _settings.Region);
         Loc.Set(Countries.Resolve(_settings.Language, _store.Region));
 
@@ -153,6 +154,12 @@ public sealed class MainWindow : Form
     /// <summary>The language setting in use: "auto", "el" or "en".</summary>
     public string LanguageSetting => _settings.Language;
 
+    public bool Animations
+    {
+        get => _settings.Animations;
+        set { _settings.Animations = value; WaveClock.Enabled = value; _settings.Save(_settingsPath); }
+    }
+
     public void ChooseTheme(string name)
     {
         if (!ChronikologioTheme.Set(name)) return;
@@ -235,6 +242,7 @@ public sealed class MainWindow : Form
     {
         ChooseTheme("system");
         ChooseLanguage("auto");
+        Animations = false;
     }
 
     /// <summary>Restyles the window and the search box with the current palette, and the title bar with its dark or light mode.</summary>
