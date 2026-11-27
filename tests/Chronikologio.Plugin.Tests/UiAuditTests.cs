@@ -180,11 +180,13 @@ public class UiAuditTests : IDisposable
     [Fact]
     public void DarkThemeUsesDarkBackgroundsInEveryLayout()
     {
+        new UiSettings { Theme = "dark" }.Save(_settings);
         ChronikologioTheme.Set("dark");
         foreach (var layout in new[] { "day" })
         {
             using var window = Open(1100, 700);
             window.PerformLayout();
+            Assert.True(ChronikologioTheme.IsDark, "The persisted dark theme must be applied at startup.");
             foreach (var c in All(window).Where(Shown).OfType<ScrollableControl>().Where(s => s.BackColor.A == 255))
                 Assert.True(Luminance(c.BackColor) < 0.25, $"{layout}: {Name(c)} has a light background {c.BackColor} in the dark theme");
             foreach (var tab in All(window).OfType<TabControl>())
