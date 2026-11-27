@@ -181,7 +181,7 @@ public sealed class EventTile : Panel
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing)
+        if (disposing && !IsDisposed)
         {
             _photo.Image = null;
             _image?.Dispose(); _image = null;
@@ -327,6 +327,12 @@ public sealed class DayOverviewLayout : DayLayout
     public override string Name => "day";
 
     protected override void StoreChanged() => _mini.SetStore(Store);
+
+    protected override void OnPaletteChanged()
+    {
+        var accent = ChronikologioTheme.Palette.Accent;
+        _read.LinkColor = _read.ActiveLinkColor = _read.VisitedLinkColor = accent;
+    }
 
     private int _heroNames;
 
@@ -595,7 +601,7 @@ public sealed class DayOverviewLayout : DayLayout
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { _heroPhoto.Image = null; _heroImage?.Dispose(); _heroImage = null; _heroTitle.Font.Dispose(); _namesTitle.Font.Dispose(); _etymTitle.Font.Dispose(); _bandText.Font.Dispose(); }
+        if (disposing && !IsDisposed) { _heroPhoto.Image = null; _heroImage?.Dispose(); _heroImage = null; _heroTitle.Font.Dispose(); _namesTitle.Font.Dispose(); _etymTitle.Font.Dispose(); _bandText.Font.Dispose(); }
         base.Dispose(disposing);
     }
 }
