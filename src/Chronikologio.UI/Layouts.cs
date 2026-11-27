@@ -58,6 +58,11 @@ public sealed class FlagButton : PictureBox
             var region = country.Region;
             menu.Items.Add(new ToolStripMenuItem(Loc.T("region." + region), Flags.Create(region, 24, 16), (_, _) => RegionChosen?.Invoke(region)) { Checked = region == _region });
         }
+        menu.Closed += (_, _) =>
+        {
+            foreach (ToolStripItem item in menu.Items) item.Image?.Dispose();
+            menu.Dispose();
+        };
         menu.Show(this, new Point(0, Height));
     }
 
@@ -141,7 +146,7 @@ public sealed class DayHeader : Panel
     private readonly FlagButton _flag = new() { Dock = DockStyle.Left, Width = 50 };
     private readonly Label _prev = new() { Text = "◀", Dock = DockStyle.Left, Width = 30, TextAlign = ContentAlignment.MiddleCenter, Cursor = Cursors.Hand };
     private readonly Label _next = new() { Text = "▶", Dock = DockStyle.Left, Width = 30, TextAlign = ContentAlignment.MiddleCenter, Cursor = Cursors.Hand };
-    private readonly Label _date = new() { Dock = DockStyle.Left, AutoSize = false, Width = 330, TextAlign = ContentAlignment.MiddleLeft };
+    private readonly Label _date = new() { Dock = DockStyle.Fill, AutoSize = false, AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft };
     private readonly EllipsisLabel _old = new() { Dock = DockStyle.Fill, Tag = "muted" };
     private readonly Label _fast = new() { Dock = DockStyle.Bottom, Height = 22, AutoSize = false, AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft, Tag = "muted" };
     private readonly ToolTip _tip = new();
@@ -164,6 +169,7 @@ public sealed class DayHeader : Panel
         Controls.Add(_old);
         Controls.Add(_today);
         Controls.Add(_date);
+        Controls.SetChildIndex(_date, 0); // Fill is laid out after the navigation and search controls.
         Controls.Add(_next);
         Controls.Add(_prev);
         Controls.Add(_flag);
@@ -191,7 +197,7 @@ public sealed class DayHeader : Panel
     public void Set(DateOnly date, DayView day, string region)
     {
         _date.Text = date.ToString("dddd d MMMM yyyy", Loc.Culture);
-        _date.Width = TextRenderer.MeasureText(_date.Text, _date.Font).Width + 24;   // as wide as the date, so the rest of the row is left to the old calendar date
+        _tip.SetToolTip(_date, _date.Text); // retain the full date when the available width is narrow
         // the old-calendar note has no room in the first row (the search and the Today button need it): it goes to the second row, after the holiday
         _old.Text = ""; _old.Visible = false;
         var oldNote = OldCalendar.Note(date);
@@ -238,7 +244,7 @@ public sealed class DayHeader : Panel
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) WaveClock.Unsubscribe(_tick);
+        if (disposing) { WaveClock.Unsubscribe(_tick); _tip.Dispose(); }
         base.Dispose(disposing);
     }
 }
