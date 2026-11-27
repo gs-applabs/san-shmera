@@ -110,19 +110,65 @@ public sealed class EventTile : Panel
         Controls.Add(_source);
         Controls.Add(_title);
         Controls.Add(_year);
-        if (image is not null)
-        {
-            _photo.Image = image;
-            Padding = new Padding(0, 0, 0, 8);
-            _year.Padding = new Padding(10, 0, 10, 0); _title.Padding = new Padding(10, 0, 10, 0); _text.Padding = new Padding(10, 0, 10, 0); _source.Padding = new Padding(10, 0, 10, 0);
-            Controls.Add(_photo);
-            if (info is not null) _tip.SetToolTip(_photo, $"{info.Caption}\n{info.Creator} · {info.License}\n{info.SourceUrl}");
-            _photo.Click += (_, _) => PhotoDialog.ShowFor(FindForm(), image, info);
-        }
+        if (image is not null) ConfigurePhoto(info);
         Height = (image is null ? 0 : 120) + 20 + _title.Height + 92 + 30;
+        if (image is not null) _photo.Image = image;
+        _photo.Click += (_, _) => { if (_image is not null) PhotoDialog.ShowFor(FindForm(), _image, _info); };
     }
 
+    private Func<(Image? Image, ImageRef? Info, string? Path)>? _photoLoader;
+    private double _portraitRatio = 1;
     public bool HasPhoto => _image is not null;
+    public bool WantsPhoto => _photoLoader is not null;
+    public void DeferPhoto(Func<(Image? Image, ImageRef? Info, string? Path)> loader, ImageRef first)
+    {
+        _photoLoader = loader;
+        _info = first;
+        ConfigurePhoto(first);
+        _lastFitWidth = -1;
+        FitTo(Width);
+    }
+    private void ConfigurePhoto(ImageRef? info)
+    {
+        _photo.CoverFocus = info?.Kind == "portrait" ? 0.06 : 0.3;
+        _photo.Cover = info?.Kind != "portrait";
+        _photo.Contain = info?.Kind == "portrait";
+        Padding = new Padding(0, 0, 0, 8);
+        _year.Padding = new Padding(10, 0, 10, 0); _title.Padding = new Padding(10, 0, 10, 0);
+        _text.Padding = new Padding(10, 0, 10, 0); _source.Padding = new Padding(10, 0, 10, 0);
+        if (_photo.Parent is null) Controls.Add(_photo);
+        if (info is not null) _tip.SetToolTip(_photo, $"{info.Caption}\n{info.Creator} · {info.License}\n{info.SourceUrl}");
+    }
+
+    public bool LoadVisiblePhoto()
+    {
+        if (_image is not null || _photoLoader is null || IsDisposed) return false;
+        var (image, info, path) = _photoLoader();
+        if (image is null)
+        {
+            _photoLoader = null;
+            Controls.Remove(_photo);
+            Padding = new Padding(10, 8, 10, 8);
+            _year.Padding = _title.Padding = _text.Padding = _source.Padding = Padding.Empty;
+        }
+        else
+        {
+            _image = image; _info = info; _creditPath = path ?? "";
+            _portraitRatio = image.Height / (double)image.Width;
+            ConfigurePhoto(info);
+            _photo.Image = image;
+        }
+        _lastFitWidth = -1;
+        FitTo(Width);
+        return true;
+    }
+
+    public void ReleaseOffscreenPhoto()
+    {
+        if (_photoLoader is null || _image is null) return;
+        _photo.Image = null;
+        _image.Dispose(); _image = null;
+    }
 
     private string _fullText = "";
 
@@ -134,10 +180,11 @@ public sealed class EventTile : Panel
         if (_lastFitWidth == width) return;
         _lastFitWidth = width;
         Width = width;
-        var photoH = _image is null ? 0 : Math.Clamp(width / 2, 110, 230);
+        var hasPhotoSlot = _image is not null || _photoLoader is not null;
+        var photoH = hasPhotoSlot ? Math.Clamp(width / 2, 110, 230) : 0;
         // a portrait is shown whole (never cropped): the box is as tall as the picture needs, up to 320 px, and the picture is scaled to fit it
-        if (_image is not null && _info?.Kind == "portrait") photoH = Math.Clamp((int)(width * _image.Height / (double)_image.Width), 110, 320);
-        if (_image is not null) _photo.Height = photoH;
+        if (hasPhotoSlot && _info?.Kind == "portrait") photoH = Math.Clamp((int)(width * (_image is null ? _portraitRatio : _image.Height / (double)_image.Width)), 110, 320);
+        if (hasPhotoSlot) _photo.Height = photoH;
         _text.Text = Cut(_fullText, (int)(112 * width / 240.0));
         var inner = Math.Max(60, width - 20);
         _title.Height = TextRenderer.MeasureText(_title.Text, _title.Font, new Size(inner, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.NoPadding).Height + 6;
@@ -184,7 +231,7 @@ public sealed class EventTile : Panel
         if (disposing && !IsDisposed)
         {
             _photo.Image = null;
-            _image?.Dispose(); _image = null;
+            _image?.Dispose(); _image = null; _photoLoader = null;
             if (_photo.Parent is null) _photo.Dispose();
             _tip.Dispose();
             _title.Font.Dispose();
@@ -280,6 +327,7 @@ public sealed class DayOverviewLayout : DayLayout
     private Image? _heroImage;
     private int _filter;
     private DayView? _day;
+    private bool _photoRefreshQueued, _refreshingPhotos;
 
     public DayOverviewLayout(DayStore store) : base(store)
     {
@@ -315,7 +363,11 @@ public sealed class DayOverviewLayout : DayLayout
         _stack.Controls.Add(_band);
         _stack.Controls.Add(_timeline);
         _stack.Controls.Add(_cards);
-        _stack.Resize += (_, _) => FitWidths();
+        _stack.Resize += (_, _) => { FitWidths(); QueueVisiblePhotos(); };
+        _stack.Scroll += (_, _) => QueueVisiblePhotos();
+        _stack.MouseWheel += (_, _) => QueueVisiblePhotos();
+        _cards.Layout += (_, _) => QueueVisiblePhotos();
+        VisibleChanged += (_, _) => QueueVisiblePhotos();
 
         Controls.Add(_stack);
         Controls.Add(_mini);
@@ -459,6 +511,7 @@ public sealed class DayOverviewLayout : DayLayout
         {
             var tile = _cards.Controls[mark.Index];
             _stack.ScrollControlIntoView(tile);
+            QueueVisiblePhotos();
         }
     }
 
@@ -558,12 +611,13 @@ public sealed class DayOverviewLayout : DayLayout
         {
             var people = _filter == 2 ? _day.People : _day.DeathList;
             if (people.Count == 0) _cards.Controls.Add(new Label { Text = Loc.T("short.noentries"), AutoSize = true, Tag = "muted", Padding = new Padding(2, 8, 0, 0) });
-            foreach (var person in people) { var (portrait, portraitInfo, portraitPath) = LoadFirst(person.Images); var tile = new EventTile(person.YearText, person.Name, person.Description, portraitInfo is null ? "" : Loc.T("event.source") + ": commons.wikimedia.org", portrait, portraitInfo, portraitPath); var who = person; tile.Opened += () => TextDialog.Show(FindForm(), who.Name, who.YearText + " — " + who.Name, (string.IsNullOrWhiteSpace(who.Details) ? who.Description : who.Description + "\n\n" + who.Details).Replace("\n", Environment.NewLine)); _cards.Controls.Add(tile); }
+            foreach (var person in people) { var portraitInfo = person.Images?.FirstOrDefault(); var tile = new EventTile(person.YearText, person.Name, person.Description, portraitInfo is null ? "" : Loc.T("event.source") + ": " + (Uri.TryCreate(portraitInfo.SourceUrl, UriKind.Absolute, out var u) ? u.Host : ""), null, null, null); if (portraitInfo is not null) { var store = Store; var candidates = person.Images; tile.DeferPhoto(() => LoadFirst(store, candidates), portraitInfo); } var who = person; tile.Opened += () => TextDialog.Show(FindForm(), who.Name, who.YearText + " — " + who.Name, (string.IsNullOrWhiteSpace(who.Details) ? who.Description : who.Description + "\n\n" + who.Details).Replace("\n", Environment.NewLine)); _cards.Controls.Add(tile); }
         }
         FitTiles(Math.Max(300, _stack.ClientSize.Width - _stack.Padding.Horizontal - SystemInformation.VerticalScrollBarWidth));
         Paint(_cards, ChronikologioTheme.Palette, false);
         }
         finally { _cards.ResumeLayout(true); }
+        QueueVisiblePhotos();
     }
 
     // the whole text of an event: what the card has cut, the longer text and the sources
@@ -576,11 +630,11 @@ public sealed class DayOverviewLayout : DayLayout
         TextDialog.Show(FindForm(), e.Title, (e.Year is { } y ? Year(y) + " — " : "") + e.Title, sb.ToString().Replace("\n", Environment.NewLine));
     }
 
-    private (Image? Image, ImageRef? Info, string? Path) LoadFirst(ImageRef[]? images)
+    private static (Image? Image, ImageRef? Info, string? Path) LoadFirst(DayStore store, ImageRef[]? images)
     {
         foreach (var candidate in images ?? Array.Empty<ImageRef>())
         {
-            try { return (ImageLoader.LoadFromStore(Store, candidate), candidate, candidate.File); }
+            try { return (ImageLoader.LoadFromStore(store, candidate), candidate, candidate.File); }
             catch (Exception ex) when (ex is ArgumentException or OutOfMemoryException or IOException) { }
         }
         return (null, null, null);
@@ -588,15 +642,55 @@ public sealed class DayOverviewLayout : DayLayout
 
     private EventTile TileFor(HistoricalEvent e)
     {
-        Image? image = null; ImageRef? info = null; string? path = null;
-        foreach (var candidate in e.Images ?? Array.Empty<ImageRef>())
-        {
-            try { image = ImageLoader.LoadFromStore(Store, candidate); info = candidate; path = candidate.File; break; }
-            catch (Exception ex) when (ex is ArgumentException or OutOfMemoryException or IOException) { path = null; }
-        }
         var link = e.Sources.FirstOrDefault(s => Uri.TryCreate(s.Url, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp));
         var source = link is null ? Loc.T("event.source") + ": " + (e.Sources.FirstOrDefault()?.Citation.Split(". ")[0] ?? "") : Loc.T("event.source") + ": " + new Uri(link.Url!).Host.Replace("www.", "");
-        return new EventTile(e.Year is { } y ? y.ToString(CultureInfo.InvariantCulture) : "", e.Title, e.Summary, source, image, info, path);
+        var tile = new EventTile(e.Year is { } y ? y.ToString(CultureInfo.InvariantCulture) : "", e.Title, e.Summary, source, null, null, null);
+        if (e.Images?.FirstOrDefault() is { } first) { var store = Store; var candidates = e.Images; tile.DeferPhoto(() => LoadFirst(store, candidates), first); }
+        return tile;
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        QueueVisiblePhotos();
+    }
+
+    private void QueueVisiblePhotos()
+    {
+        if (_photoRefreshQueued || _refreshingPhotos || IsDisposed || Disposing || !IsHandleCreated) return;
+        _photoRefreshQueued = true;
+        try
+        {
+            BeginInvoke((Action)(() =>
+            {
+                _photoRefreshQueued = false;
+                if (!IsDisposed && !Disposing) RefreshVisiblePhotos();
+            }));
+        }
+        catch (InvalidOperationException) { _photoRefreshQueued = false; }
+    }
+
+    private void RefreshVisiblePhotos()
+    {
+        if (_refreshingPhotos || _cards.IsDisposed) return;
+        _refreshingPhotos = true;
+        bool changed = false;
+        _cards.SuspendLayout();
+        try
+        {
+            // Prefetch only one additional viewport, unload distant photos without changing card geometry.
+            var viewport = _stack.ClientRectangle;
+            viewport.Inflate(0, Math.Max(0, viewport.Height / 2));
+            foreach (var tile in _cards.Controls.OfType<EventTile>())
+            {
+                var bounds = tile.Bounds;
+                bounds.Offset(_cards.Left, _cards.Top);
+                if (Visible && viewport.IntersectsWith(bounds)) changed |= tile.LoadVisiblePhoto();
+                else tile.ReleaseOffscreenPhoto();
+            }
+        }
+        finally { _cards.ResumeLayout(true); _refreshingPhotos = false; }
+        if (changed) QueueVisiblePhotos();
     }
 
     protected override void Dispose(bool disposing)
