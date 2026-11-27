@@ -88,6 +88,35 @@ jobs:
           $report | Add-Member -NotePropertyName baselineInstallerBytes -NotePropertyValue $old
           $report | Add-Member -NotePropertyName installerSavingsBytes -NotePropertyValue ($old - $report.packedInstallerBytes)
           $report | ConvertTo-Json | Tee-Object -FilePath package-metrics.json
+      - name: Upgrade loose data and preserve user-modified files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dest = Join-Path $env:ProgramFiles 'Chronikologio-Footprint-Test'
+          $args = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/COMPONENTS=app',"/DIR=`"$dest`"")
+          $old = Start-Process (Resolve-Path Output/FootprintBaseline.exe) -ArgumentList $args -Wait -PassThru
+          if ($old.ExitCode -ne 0) { throw 'Baseline install failed' }
+          $root = Join-Path $dest 'data'
+          $before = @(Get-ChildItem $root -Recurse -File)
+          if ($before.Count -lt 3000) { throw 'Baseline library not installed' }
+          $changed = $before | Where-Object Extension -eq '.tsv' | Select-Object -First 1
+          Add-Content -LiteralPath $changed.FullName -Value '# locally modified for migration test'
+          $custom = Join-Path $root 'custom-notes.txt'
+          Set-Content -LiteralPath $custom -Value 'preserve this user file'
+          $hash = (Get-FileHash -LiteralPath $changed.FullName).Hash
+          $new = Start-Process (Resolve-Path Output/ChronikologioSetup.exe) -ArgumentList ($args + "/LOG=`"$env:RUNNER_TEMP\chron-upgrade.log`"") -Wait -PassThru
+          if ($new.ExitCode -ne 0) { throw 'Packed upgrade failed' }
+          if (!(Test-Path -LiteralPath $changed.FullName) -or (Get-FileHash -LiteralPath $changed.FullName).Hash -ne $hash) { throw 'Modified legacy data lost' }
+          if (!(Test-Path -LiteralPath $custom)) { throw 'Custom file lost' }
+          $remaining = @(Get-ChildItem $root -Recurse -File)
+          if ($remaining.Count -ne 5) { throw "Expected three pack files and two preserved files; got $($remaining.Count)" }
+          $report = Get-Content package-metrics.json -Raw | ConvertFrom-Json
+          $report | Add-Member -NotePropertyName legacyFilesBefore -NotePropertyValue $before.Count
+          $report | Add-Member -NotePropertyName legacyFilesAfter -NotePropertyValue ($remaining.Count - 3)
+          $report | Add-Member -NotePropertyName modifiedAndCustomFilesPreserved -NotePropertyValue $true
+          $report | ConvertTo-Json | Tee-Object -FilePath package-metrics.json
+          $uninstall = Start-Process (Join-Path $dest 'unins000.exe') -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw 'Upgrade uninstall failed' }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -95,4 +124,5 @@ jobs:
           path: |
             package-metrics.json
             ${{ runner.temp }}/chron-install.log
+            ${{ runner.temp }}/chron-upgrade.log
           if-no-files-found: warn
