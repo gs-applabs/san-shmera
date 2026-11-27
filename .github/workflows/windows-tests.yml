@@ -26,10 +26,56 @@ jobs:
       - name: Tests
         run: dotnet test tests/Chronikologio.Core.Tests --nologo
 
-      - name: Vulnerable packages (warning only)
+      - name: Plugin and WinForms tests
+        run: dotnet test tests/Chronikologio.Plugin.Tests -c Release --nologo
+
+      - name: Publish desktop app
+        run: dotnet publish src/Chronikologio.Windows -c Release -o smoke-app --nologo
+
+      - name: Launch desktop app and sample resources
         shell: pwsh
-        continue-on-error: true
         run: |
-          $out = dotnet list src/Chronikologio.UI package --vulnerable --include-transitive | Out-String
-          Write-Host $out
-          if ($out -match 'has the following vulnerable packages') { Write-Warning 'Vulnerable packages found' }
+          $ErrorActionPreference = 'Stop'
+          $exe = Join-Path (Resolve-Path smoke-app) 'Chronikologio.exe'
+          $p = Start-Process $exe -PassThru
+          try {
+            $sw = [Diagnostics.Stopwatch]::StartNew()
+            do {
+              Start-Sleep -Milliseconds 250
+              $p.Refresh()
+              if ($p.HasExited) { throw 'Application exited during startup' }
+            } until ($p.MainWindowHandle -ne 0 -or $sw.Elapsed.TotalSeconds -ge 20)
+            if ($p.MainWindowHandle -eq 0) { throw 'No main window appeared' }
+            $startup = $sw.ElapsedMilliseconds
+            $p.Refresh(); $cpu = $p.TotalProcessorTime.TotalMilliseconds
+            $sample = [Diagnostics.Stopwatch]::StartNew()
+            Start-Sleep -Seconds 5
+            $p.Refresh()
+            if ($p.HasExited -or !$p.Responding) { throw 'Main window not responsive' }
+            $result = [ordered]@{ startupMs = $startup; workingSetBytes = $p.WorkingSet64; privateBytes = $p.PrivateMemorySize64; handles = $p.HandleCount; threads = $p.Threads.Count; cpuMs = ($p.TotalProcessorTime.TotalMilliseconds - $cpu); sampleMs = $sample.ElapsedMilliseconds }
+            $result | ConvertTo-Json | Tee-Object -FilePath smoke-metrics.json
+          } finally {
+            if (!$p.HasExited) { [void]$p.CloseMainWindow(); if (!$p.WaitForExit(5000)) { $p.Kill(); throw 'Desktop app failed to close gracefully' } }
+            $p.Dispose()
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chronikologio-smoke-metrics
+          path: smoke-metrics.json
+          if-no-files-found: warn
+
+      - name: Vulnerable packages
+        shell: pwsh
+        run: |
+          foreach ($project in @('src/Chronikologio.Windows', 'src/Chronikologio.OpsisPlugin')) {
+            $out = dotnet list $project package --vulnerable --include-transitive --format json | Out-String
+            if ($LASTEXITCODE -ne 0) { throw "Dependency audit failed: $project" }
+            Write-Host $out
+            $report = $out | ConvertFrom-Json
+            foreach ($target in $report.projects.frameworks) {
+              foreach ($package in @($target.topLevelPackages) + @($target.transitivePackages)) {
+                if ($package.vulnerabilities) { throw "Vulnerable dependency: $($package.id)" }
+              }
+            }
+          }
