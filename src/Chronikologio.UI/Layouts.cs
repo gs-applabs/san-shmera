@@ -43,10 +43,13 @@ public sealed class FlagButton : PictureBox
 
     public void SetRegion(string region)
     {
-        _region = region;
-        var old = Image;
-        Image = Flags.Create(region);
-        old?.Dispose();
+        if (_region != region || Image is null)
+        {
+            _region = region;
+            var old = Image;
+            Image = Flags.Create(region);
+            old?.Dispose();
+        }
         _tip.SetToolTip(this, Loc.T("flag.tip"));
     }
 
@@ -81,6 +84,7 @@ public sealed class MiniCalendar : UserControl
     private readonly Label _next = new() { Text = "▶", Dock = DockStyle.Right, Width = 28, TextAlign = ContentAlignment.MiddleCenter, Cursor = Cursors.Hand };
     private readonly CalendarGrid _grid = new() { Dock = DockStyle.Fill };
     private DayStore _store;
+    private Font? _titleFont;
 
     public event Action<DateOnly>? DateChosen;
 
@@ -113,6 +117,12 @@ public sealed class MiniCalendar : UserControl
         _grid.BindStore(store);
     }
 
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) { _titleFont?.Dispose(); _titleFont = null; }
+        base.Dispose(disposing);
+    }
+
     public void UpdateTitle() => _title.Text = _grid.Month.ToString("MMMM yyyy", Loc.Culture);
 
     public void Restyle()
@@ -121,7 +131,12 @@ public sealed class MiniCalendar : UserControl
         BackColor = p.Background;
         foreach (var c in new Control[] { _title, _grid }) { c.BackColor = p.Background; c.ForeColor = p.Text; }
         foreach (var c in new[] { _prev, _next }) { c.BackColor = p.Background; c.ForeColor = p.TextMuted; }
-        _title.Font = new Font(Font, FontStyle.Bold);
+        if (_titleFont is null || _titleFont.FontFamily.Name != Font.FontFamily.Name || _titleFont.Size != Font.Size)
+        {
+            var oldFont = _titleFont;
+            _title.Font = _titleFont = new Font(Font, FontStyle.Bold);
+            oldFont?.Dispose();
+        }
         _grid.Accent = p.Accent;
         _grid.Muted = p.TextMuted;
         _grid.Invalidate();
