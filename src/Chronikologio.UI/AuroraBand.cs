@@ -14,7 +14,21 @@ public static class WaveClock
     private static readonly System.Diagnostics.Stopwatch Clock = System.Diagnostics.Stopwatch.StartNew();
 
     /// <summary>The time of the waves in "wave seconds": it follows the real clock, so the speed does not depend on how fast the pictures are drawn.</summary>
-    public static double Time => Clock.Elapsed.TotalSeconds * 0.4;
+    private static bool _enabled;
+    public static bool Enabled
+    {
+        get => _enabled;
+        set
+        {
+            if (_enabled == value) return;
+            _enabled = value;
+            if (value && Listeners.Count > 0) Timer.Start(); else Timer.Stop();
+            foreach (var (_, control) in _snapshot)
+                if (!control.IsDisposed) control.Invalidate();
+        }
+    }
+
+    public static double Time => Enabled ? Clock.Elapsed.TotalSeconds * 0.4 : 0;
 
     static WaveClock()
     {
@@ -36,7 +50,7 @@ public static class WaveClock
     {
         Listeners[handler] = control;
         _snapshot = Listeners.ToArray();
-        if (Listeners.Count == 1) { Timer.Interval = 33; Timer.Start(); }
+        if (Enabled && Listeners.Count == 1) { Timer.Interval = 33; Timer.Start(); }
     }
 
     public static void Unsubscribe(Action handler)
