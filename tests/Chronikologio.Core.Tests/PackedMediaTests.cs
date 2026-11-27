@@ -45,6 +45,16 @@ public class PackedMediaTests
             ?? throw new InvalidOperationException("Missing original data root");
         var store = DayStore.Load(root);
         var original = DayStore.Load(source);
+        foreach (var region in DayStore.Regions)
+        {
+            var packedRegion = DayStore.Load(root, region);
+            var originalRegion = DayStore.Load(source, region);
+            Assert.Equal(originalRegion.Errors.Count, packedRegion.Errors.Count);
+            for (var date = new DateOnly(2024, 1, 1); date.Year == 2024; date = date.AddDays(1))
+                foreach (var language in new[] { "el", "en" })
+                    Assert.Equal(JsonSerializer.Serialize(originalRegion.GetDayIn(date.Month, date.Day, language)),
+                        JsonSerializer.Serialize(packedRegion.GetDayIn(date.Month, date.Day, language)));
+        }
         foreach (var file in Directory.EnumerateFiles(Path.Combine(source, "images"), "*", SearchOption.AllDirectories)
             .Where(p => new[] { ".webp", ".png", ".jpg", ".jpeg" }.Contains(Path.GetExtension(p).ToLowerInvariant())))
         {
