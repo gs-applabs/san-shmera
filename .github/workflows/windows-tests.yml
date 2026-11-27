@@ -53,6 +53,8 @@ jobs:
           $env:CHRON_SOURCE_DATA = (Resolve-Path data).Path
           dotnet test tests/Chronikologio.Core.Tests --nologo --filter FullyQualifiedName~PackedMediaTests
           if ($LASTEXITCODE -ne 0) { throw 'Packed media integrity test failed' }
+          dotnet test tests/Chronikologio.Plugin.Tests -c Release --nologo --filter FullyQualifiedName~InsideThePluginContextPackedImagesCanBeRead
+          if ($LASTEXITCODE -ne 0) { throw 'Packed plugin host decoding failed' }
 
       - name: Launch desktop app and sample resources
         if: ${{ !cancelled() }}
