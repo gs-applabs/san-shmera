@@ -31,7 +31,7 @@ public static class ThemeNative
 /// </summary>
 public sealed class SideRail : Control
 {
-    public sealed record RailItem(string Key, string Glyph, string Tip, Action Click, string Label = "");
+    public sealed record RailItem(string Key, string Glyph, string Tip, Action Click, string Label = "", string Group = "");
 
     private readonly List<RailItem> _items = new();
     private readonly ToolTip _tip = new();
@@ -100,7 +100,13 @@ public sealed class SideRail : Control
         _pulseTimer.Start();
     }
 
-    private Rectangle Cell(int index) => new(8, BrandHeight + 6 + index * 46, Width - 16, 42);
+    private bool StartsGroup(int i) => _items[i].Group.Length > 0 && (i == 0 || _items[i-1].Group != _items[i].Group);
+    private Rectangle Cell(int index)
+    {
+        var y = BrandHeight + 6 + index * 40;
+        for (var i = 0; i <= index; i++) if (StartsGroup(i)) y += 24;
+        return new Rectangle(8, y, Width - 16, 38);
+    }
 
     protected override void OnPaint(PaintEventArgs e)
     {
@@ -111,11 +117,14 @@ public sealed class SideRail : Control
         DrawBrand(g, p);
         using var glyphFont = new Font("Segoe MDL2 Assets", 14f);
         using var labelFont = new Font("Segoe UI", 10.5f);
+        using var groupFont = new Font("Segoe UI", 8.5f, FontStyle.Bold);
         using var accent = new SolidBrush(p.Accent);
         using var hoverBrush = new SolidBrush(Color.FromArgb(40, p.Text));
         for (var i = 0; i < _items.Count; i++)
         {
             var r = Cell(i);
+            if (StartsGroup(i))
+                TextRenderer.DrawText(g, _items[i].Group, groupFont, new Rectangle(14, r.Y - 23, Width - 28, 22), p.TextMuted, TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             var selected = _items[i].Key == _checked || _items[i].Key == _pulse;
             var color = selected ? p.Accent : p.TextMuted;
             if (i == _hover || _items[i].Key == _pulse) g.FillRectangle(hoverBrush, r);
