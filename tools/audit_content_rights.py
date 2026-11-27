@@ -18,6 +18,30 @@ def audit(root):
     declarations = defaultdict(list)
     licenses, hosts, issues = Counter(), Counter(), []
     saint_rows, saint_placeholders = 0, 0
+    def add(where, values):
+        file, caption, creator, license_, url = (x.strip() if isinstance(x, str) else "" for x in values)
+        path = PurePosixPath(file.replace("\\", "/"))
+        if path.is_absolute() or ".." in path.parts or ":" in file or not file:
+            issues.append({"where": where, "reason": "unsafe-path"})
+            return
+        key = path.as_posix()
+        try:
+            parsed = urlsplit(url)
+            host = (parsed.hostname or "").lower()
+            valid_url = parsed.scheme == "https" and bool(host) and parsed.username is None
+        except ValueError:
+            host, valid_url = "", False
+        licenses[license_ or "(missing)"] += 1
+        hosts[host or "(missing)"] += 1
+        declarations[key].append((where, creator, license_, url))
+        if not creator or not PERMITTED_LABEL.fullmatch(license_) or not valid_url:
+            issues.append({"where": where, "file": key, "reason": "unrecognized-or-incomplete-rights-metadata"})
+        if creator.lower().startswith(("unknown", "anonymous", "άγνωστ")):
+            issues.append({"where": where, "file": key, "reason": "creator-unknown-needs-review"})
+        if host not in {"commons.wikimedia.org", "images.nasa.gov", "www.nasa.gov", "nasa.gov", "history.nasa.gov"}:
+            issues.append({"where": where, "file": key, "reason": "source-host-needs-review"})
+
+    tsv_paths_before_json = set()
     for p in sorted(images.rglob("*.tsv")):
         expected = next((v for k, v in FORMATS.items() if p.name.startswith(k)), None)
         if expected is None:
@@ -30,30 +54,26 @@ def audit(root):
             if len(fields) != expected:
                 issues.append({"where": where, "reason": "malformed-row"})
                 continue
-            file, caption, creator, license_, url = (x.strip() for x in fields[-5:])
-            path = PurePosixPath(file.replace("\\", "/"))
-            if path.is_absolute() or ".." in path.parts or ":" in file or not file:
-                issues.append({"where": where, "reason": "unsafe-path"})
-                continue
-            key = path.as_posix()
-            try:
-                parsed = urlsplit(url)
-                host = (parsed.hostname or "").lower()
-                valid_url = parsed.scheme == "https" and bool(host) and parsed.username is None
-            except ValueError:
-                host, valid_url = "", False
-            licenses[license_ or "(missing)"] += 1
-            hosts[host or "(missing)"] += 1
-            declarations[key].append((where, creator, license_, url))
-            if not creator or not PERMITTED_LABEL.fullmatch(license_) or not valid_url:
-                issues.append({"where": where, "file": key, "reason": "unrecognized-or-incomplete-rights-metadata"})
-            if creator.lower().startswith(("unknown", "anonymous", "άγνωστ")):
-                issues.append({"where": where, "file": key, "reason": "creator-unknown-needs-review"})
-            if host not in {"commons.wikimedia.org", "images.nasa.gov", "www.nasa.gov", "nasa.gov", "history.nasa.gov"}:
-                issues.append({"where": where, "file": key, "reason": "source-host-needs-review"})
+            add(where, fields[-5:])
+    tsv_paths_before_json = set(declarations)
+    # Existing day JSON files contain the original hand-curated image references.
+    def walk(value, location):
+        if isinstance(value, dict):
+            if "file" in value and any(k in value for k in ("creator", "license", "sourceUrl")):
+                add(location, [value.get(k) for k in ("file", "caption", "creator", "license", "sourceUrl")])
+            for key, child in value.items():
+                walk(child, f"{location}/{key}")
+        elif isinstance(value, list):
+            for i, child in enumerate(value):
+                walk(child, f"{location}/{i}")
+    for p in sorted(root.rglob("*.json")):
+        try:
+            walk(json.loads(p.read_text(encoding="utf-8-sig")), p.relative_to(root).as_posix())
+        except (ValueError, UnicodeError) as ex:
+            issues.append({"where": p.relative_to(root).as_posix(), "reason": "invalid-json", "detail": str(ex)})
     actual = {p.relative_to(images).as_posix() for p in images.rglob("*") if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES}
     for key in sorted(actual - declarations.keys()):
-        issues.append({"file": key, "reason": "no-image-tsv-declaration-check-json-or-other-manifests"})
+        issues.append({"file": key, "reason": "no-image-declaration-check-other-manifests"})
     for key in sorted(declarations.keys() - actual):
         issues.append({"file": key, "reason": "declared-file-not-found"})
     for key, refs in sorted(declarations.items()):
@@ -70,6 +90,7 @@ def audit(root):
         "status": "inventory-only-not-legal-clearance",
         "imageFiles": len(actual),
         "uniqueDeclaredImagePaths": len(declarations),
+        "newlyMatchedJsonImagePaths": len(set(declarations) - tsv_paths_before_json),
         "imageDeclarations": sum(map(len, declarations.values())),
         "declaredLicenseCounts": dict(sorted(licenses.items())),
         "declaredSourceHosts": dict(sorted(hosts.items())),
@@ -80,7 +101,7 @@ def audit(root):
         "limitations": [
             "No external rights pages were fetched or independently verified.",
             "A declared license is not proof of permission, jurisdictional public domain or image relevance.",
-            "Images declared in JSON or other manifests require separate inventory.",
+            "TSV and JSON declarations are inventoried; other manifests may require separate review.",
             "Source facts, selection/database rights, captions and original summaries need independent review."
         ]
     }
