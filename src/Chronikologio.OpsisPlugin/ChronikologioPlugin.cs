@@ -11,7 +11,7 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
 {
     public const string FeedKey = "san-simera";
 
-    private DailySnapshotService? _service;
+    private volatile DailySnapshotService? _service;
     private string _language = "el";
     private readonly object _lifecycle = new();
     private bool _started;
@@ -59,7 +59,8 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
                 if (!_started || !ReferenceEquals(_service, service)) return;
                 PluginFeeds.Register(new PluginFeed(FeedKey, "Σαν σήμερα", "On this day", BuildFeed));
             }
-            FeedExchange.TryWrite(service.Store);   // for the News Crawler when it is not in this process (same content = no write)
+            try { FeedExchange.TryWrite(service.Store); }
+            catch (ObjectDisposedException) { /* Stop raced with feed publication. */ }
         };
         service.Start();
         PluginLog.Write($"feed '{FeedKey}' registered; feeds known to the host: {string.Join(", ", PluginFeeds.All().Select(f => f.Key))}");
@@ -68,15 +69,17 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
 
     public void Stop()
     {
+        DailySnapshotService? old;
         lock (_lifecycle)
         {
             _started = false;
             PluginFeeds.Unregister(FeedKey);
-            _service?.Dispose();
+            old = _service;
             _service = null;
             _cached = null;
             _asked = 0;
         }
+        old?.Dispose();
     }
 
     public void Pause() { }
@@ -119,8 +122,16 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
 
     private Control CreateCalendar()
     {
-        var panel = new CalendarPanel(Service.Store);
-        panel.StoreChanged += store => Service.SetRegion(store.Region);   // the bar feed follows the country chosen with the flag
+        DailySnapshotService service;
+        lock (_lifecycle) service = Service;
+        var panel = new CalendarPanel(service.Store);
+        // Keep the existing service identity. A late click on a widget from a stopped
+        // plugin must not recreate its database or timer.
+        panel.StoreChanged += store =>
+        {
+            lock (_lifecycle)
+                if (ReferenceEquals(_service, service)) service.UseStore(store);
+        };
         return panel;
     }
 
@@ -131,7 +142,7 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
 
     private IReadOnlyList<PluginFeedItem> BuildFeed()
     {
-        if (Interlocked.Increment(ref _asked) <= 3) PluginLog.Write($"the bars asked for the lines (time {_asked}); snapshot: {(_service?.Current is { } c ? c.Items.Count + " lines" : "not ready")}");
+        if (Volatile.Read(ref _asked) < 3 && Interlocked.Increment(ref _asked) <= 3) PluginLog.Write($"the bars asked for the lines (time {_asked}); snapshot: {(_service?.Current is { } c ? c.Items.Count + " lines" : "not ready")}");
         var service = _service;
         if (service is null) return Array.Empty<PluginFeedItem>();
         service.CheckDate();
@@ -140,7 +151,7 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
         var cache = _cached;
         if (cache is not null && ReferenceEquals(cache.Snapshot, snapshot)) return cache.Items;
         var items = Array.AsReadOnly(snapshot.Items.Select(i => new PluginFeedItem(i.Text)).ToArray());
-        _cached = new CachedFeed(snapshot, items);
+        if (ReferenceEquals(_service, service)) _cached = new CachedFeed(snapshot, items);
         return items;
     }
 }
