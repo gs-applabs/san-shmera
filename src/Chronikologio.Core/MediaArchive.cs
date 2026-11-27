@@ -41,8 +41,8 @@ internal sealed class MediaArchive
     internal byte[]? Read(string key)
     {
         if (!_index.TryGetValue(key, out var entry)) return null;
-        if (entry.Offset < 0 || entry.Length <= 0 || entry.Length > MaxImageBytes ||
-            entry.Sha256 is not { Length: 64 })
+        if (entry is null || entry.Offset < 0 || entry.Length <= 0 || entry.Length > MaxImageBytes ||
+            entry.Sha256 is not { Length: 64 } || !entry.Sha256.All(Uri.IsHexDigit))
             throw new IOException("Invalid media index entry.");
         using var stream = File.OpenRead(_pack);
         if (entry.Offset > stream.Length || entry.Length > stream.Length - entry.Offset)
