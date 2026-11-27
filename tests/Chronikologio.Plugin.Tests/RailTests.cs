@@ -30,7 +30,20 @@ public class RailTests : IDisposable
         window.SetDate(new DateOnly(2026, 8, 15));
         var rail = RailOf(window);
         var click = typeof(Control).GetMethod("OnMouseUp", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        click.Invoke(rail, new object[] { new MouseEventArgs(MouseButtons.Left, 1, 30, SideRail.BrandHeight + 20, 0) });
+        // Group headings are not buttons. Click the actual painted cell after the heading.
+        var cell = typeof(SideRail).GetMethod("Cell", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var bounds = (Rectangle)cell.Invoke(rail, new object[] { 0 })!;
+        Assert.True(bounds.Top > SideRail.BrandHeight + 20);
+        click.Invoke(rail, new object[] { new MouseEventArgs(MouseButtons.Left, 1, bounds.Left + 22, bounds.Top + bounds.Height / 2, 0) });
         Assert.Equal(today, window.SelectedDate);
+        // Every newly grouped menu entry must use the same geometry for hit testing.
+        foreach (var key in new[] { "calendar-tools", "astronomy", "today" })
+        {
+            var index = rail.Items.ToList().FindIndex(x => x.Key == key);
+            Assert.True(index >= 0);
+            var r = (Rectangle)cell.Invoke(rail, new object[] { index })!;
+            click.Invoke(rail, new object[] { new MouseEventArgs(MouseButtons.Left, 1, r.Left + 22, r.Top + r.Height / 2, 0) });
+            Assert.Equal(key, window.ActivePage);
+        }
     }
 }
