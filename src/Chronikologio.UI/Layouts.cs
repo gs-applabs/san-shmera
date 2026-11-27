@@ -105,10 +105,7 @@ public sealed class MiniCalendar : UserControl
     public void SetStore(DayStore store)
     {
         _store = store;
-        _grid.HasData = d => { var v = _store.GetDay(d); return v.Commemorations.Count + v.Events.Count > 0; };
-        _grid.IsMajor = d => _store.GetDay(d).Commemorations.Any(c => c.IsMajorFeast);
-        _grid.IsDayOff = d => Holidays.IsDayOff(d, _store.Region);
-        _grid.Invalidate();
+        _grid.BindStore(store);
     }
 
     public void UpdateTitle() => _title.Text = _grid.Month.ToString("MMMM yyyy", Loc.Culture);
