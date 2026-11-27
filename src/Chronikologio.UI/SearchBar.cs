@@ -124,6 +124,7 @@ public sealed class SearchBar : Panel
     public void Clear()
     {
         _box.Clear();
+        _shown.Clear(); _list.Items.Clear();
         _list.Visible = false;
     }
 
@@ -236,7 +237,7 @@ public sealed class SearchBar : Panel
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { _hide.Dispose(); _list.Dispose(); }
+        if (disposing && !IsDisposed) { _hide.Dispose(); _list.Dispose(); _index = null; _shown.Clear(); _store = null; }
         base.Dispose(disposing);
     }
 }
