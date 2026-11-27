@@ -44,9 +44,7 @@ public sealed class CalendarPanel : UserControl
         Controls.Add(_more);
         Controls.Add(nav);
 
-        _grid.HasData = date => { var v = _store.GetDay(date); return v.Commemorations.Count + v.Events.Count > 0; };
-        _grid.IsMajor = date => _store.GetDay(date).Commemorations.Any(c => c.IsMajorFeast);
-        _grid.IsDayOff = date => Holidays.IsDayOff(date, _store.Region);
+        _grid.BindStore(_store);
         _grid.SelectedChanged += d => { RefreshDay(); UpdateTitle(); SelectedDateChanged?.Invoke(d); };
         _prev.Click += (_, _) => { _grid.Month = _grid.Month.AddMonths(-1); UpdateTitle(); };
         _next.Click += (_, _) => { _grid.Month = _grid.Month.AddMonths(1); UpdateTitle(); };
@@ -74,6 +72,7 @@ public sealed class CalendarPanel : UserControl
             ChronikologioTheme.Changed -= ApplyTheme;
             Loc.Changed -= ApplyLanguage;
             _flag.Image?.Dispose();
+            _tip.Dispose();
         }
         base.Dispose(disposing);
     }
@@ -153,7 +152,7 @@ public sealed class CalendarPanel : UserControl
     public void SetStore(DayStore store)
     {
         _store = store;
-        _grid.Invalidate();
+        _grid.BindStore(store);
         RefreshDay();
     }
 
@@ -188,10 +187,11 @@ public sealed class CalendarPanel : UserControl
     private void RefreshDay()
     {
         _date.Text = _grid.Selected.ToString("dddd d MMMM", El) + " " + OldCalendar.Note(_grid.Selected);
-        _short.Text = ShortText.Build(_store.GetDay(_grid.Selected), _store.Region).Replace("\n", Environment.NewLine);
+        var day = _store.GetDay(_grid.Selected);
+        _short.Text = ShortText.Build(day, _store.Region).Replace("\n", Environment.NewLine);
         _short.SelectionStart = 0;
         _short.SelectionLength = 0;
-        ShowThumbnail(_store.GetDay(_grid.Selected));
+        ShowThumbnail(day);
     }
 
     /// <summary>The first available image of the day (a saint's icon, else an event photograph) beside the short text; hidden when there is none.</summary>
