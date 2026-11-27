@@ -99,7 +99,7 @@ public sealed class MainWindow : Form
         {
             new SideRail.RailItem("today", "\uE787", Loc.T("menu.today") + " (Ctrl+Home)", GoToday, Loc.T("menu.today"), T("ΗΜΕΡΟΛΟΓΙΟ", "CALENDAR")),
             new SideRail.RailItem("calendar-tools", "\uE787", T("Μετατροπές και υπολογισμοί (Ctrl+1)", "Conversions and calculations (Ctrl+1)"), () => OpenPage("calendar-tools"), T("Εργαλεία ημερολογίου", "Calendar tools")),
-            new SideRail.RailItem("astronomy", "\uE708", T("Ήλιος, Σελήνη, εκλείψεις (Ctrl+2)", "Sun, Moon, eclipses (Ctrl+2)"), () => OpenPage("astronomy"), T("Αστρονομικό ημερολόγιο", "Astronomy"), T("ΑΣΤΡΟΝΟΜΙΑ", "ASTRONOMY")),
+            new SideRail.RailItem("astronomy", "\uE708", T("Ήλιος, Σελήνη, εκλείψεις (Ctrl+2)", "Sun, Moon, eclipses (Ctrl+2)"), () => OpenPage("astronomy"), T("Αστρονομία", "Astronomy"), T("ΑΣΤΡΟΝΟΜΙΑ", "ASTRONOMY")),
             new SideRail.RailItem("theme", "\uE790", Loc.T("menu.theme") + " (Ctrl+T)", CycleTheme, Loc.T("menu.theme"), T("ΕΦΑΡΜΟΓΗ", "APPLICATION")),
             new SideRail.RailItem("settings", "", Loc.T("menu.settings") + " (Ctrl+,)", ShowSettings, Loc.T("menu.settings")),
             new SideRail.RailItem("help", "", Loc.T("menu.about") + " (F1)", ShowGuide, Loc.T("menu.about"))
