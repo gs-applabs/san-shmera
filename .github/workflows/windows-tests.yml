@@ -158,6 +158,7 @@ jobs:
           path: |
             smoke-metrics.json
             audit-metrics/*.json
+            audit-metrics/*.png
           if-no-files-found: warn
 
       - name: Vulnerable packages
