@@ -82,6 +82,24 @@ public static class SkyCalendar
             if (e.peak.ToUtcDateTime() >= end) break;
             Add("lunar-eclipse", e.peak, e.kind.ToString());
         }
+        // Planetary conjunctions/oppositions relative to the Sun, not pairwise planet alignments.
+        foreach (var planet in new[] { Body.Mercury, Body.Venus, Body.Mars, Body.Jupiter, Body.Saturn, Body.Uranus, Body.Neptune })
+        {
+            foreach (var angle in new[] { 0.0, 180.0 })
+            {
+                var cursor = t;
+                for (var n = 0; n < 12; n++)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var hit = Astronomy.SearchRelativeLongitude(planet, angle, cursor);
+                    if (hit.ToUtcDateTime() >= end) break;
+                    var kind = angle == 180 ? "superior-conjunction" :
+                        planet is Body.Mercury or Body.Venus ? "inferior-conjunction" : "opposition";
+                    Add(kind, hit, planet.ToString());
+                    cursor = hit.AddDays(1);
+                }
+            }
+        }
         return events.OrderBy(e => e.Utc).ToArray();
     }
 }
