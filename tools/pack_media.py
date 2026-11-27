@@ -12,6 +12,7 @@ EXTENSIONS = {".webp", ".png", ".jpg", ".jpeg"}
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("data", type=Path)
+    parser.add_argument("--cleanup-manifest", type=Path, help="List exact original paths and SHA-256 for safe upgrades")
     parser.add_argument("--remove-loose", action="store_true", help="Only for a disposable publish output")
     args = parser.parse_args()
     root = args.data.resolve()
@@ -66,6 +67,17 @@ def main():
         pack.replace(root / "media.pack")
         idx.replace(root / "media.index")
         text_pack.replace(root / "texts.pack")
+    if args.cleanup_manifest:
+        manifest = args.cleanup_manifest
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        lines = []
+        for path in files + texts:
+            relative = path.relative_to(root).as_posix()
+            if "|" in relative or "\r" in relative or "\n" in relative:
+                raise RuntimeError(f"Invalid manifest path: {relative}")
+            with path.open("rb") as stream:
+                lines.append(relative + "|" + hashlib.file_digest(stream, "sha256").hexdigest())
+        manifest.write_text("\n".join(lines) + "\n", encoding="utf-8-sig")
     if args.remove_loose:
         for path in files + texts:
             path.unlink()
