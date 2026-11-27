@@ -1,3 +1,4 @@
+using System.Reflection;
 using Chronikologio.Core;
 using Chronikologio.UI;
 using OpsisNewsCrawler.Plugin.Abstractions;
@@ -31,7 +32,7 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
 
     public string Id => "chronikologio";
     public string Name => "Χρονικολόγιο — Timeline Calendar";
-    public string Version => typeof(ChronikologioPlugin).Assembly.GetName().Version?.ToString(3) ?? "0.1.0";
+    public string Version => typeof(ChronikologioPlugin).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "1.2.1";
 
     public event Action<string>? NavigationRequested { add { } remove { } }
 
@@ -117,7 +118,7 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
             new PluginAboutSection("Δεδομένα", "Data",
                 "Οι εγγραφές έχουν γραφτεί από την αρχή και δείχνουν ποια κατάσταση επαλήθευσης έχουν. Στο τέλος κάθε κειμένου αναφέρονται οι πηγές."),
             new PluginAboutSection("Ενημερώσεις", "Updates",
-                "Ως plugin, το Χρονικολόγιο ενημερώνεται μόνο από το κουμπί ενημέρωσης του Opsis, όχι από δικό του έλεγχο. Οι εκδόσεις βρίσκονται στο github.com/giorstergiopoulos-design/san-shmera (releases) με αρχείο SHA-256· ο εγκαταστάτης Setup ενημερώνει εφαρμογή και plugin μαζί, και ο Opsis μπορεί να ζητήσει νέα έγκριση για το ενημερωμένο plugin.")
+                "Ως plugin, το Χρονικολόγιο ενημερώνεται μόνο από το κουμπί ενημέρωσης του Opsis, όχι από δικό του έλεγχο. Οι εκδόσεις βρίσκονται στο github.com/gs-applabs/san-shmera (releases) με αρχείο SHA-256· ο εγκαταστάτης Setup ενημερώνει εφαρμογή και plugin μαζί, και ο Opsis μπορεί να ζητήσει νέα έγκριση για το ενημερωμένο plugin.")
         });
 
     private Control CreateCalendar()
