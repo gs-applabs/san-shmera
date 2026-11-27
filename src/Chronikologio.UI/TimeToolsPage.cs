@@ -65,6 +65,7 @@ public abstract class TimeToolsPage : Panel
         {
             var bg = Equals(c.Tag, "card") ? p.Surface : background;
             c.BackColor = bg; c.ForeColor = Equals(c.Tag, "title") ? p.Accent : Equals(c.Tag, "muted") ? p.TextMuted : p.Text;
+            if (c is LinkLabel link) link.LinkColor = link.ActiveLinkColor = link.VisitedLinkColor = p.Accent;
             foreach (Control child in c.Controls) Paint(child, bg);
         }
         Paint(this, p.Background);
