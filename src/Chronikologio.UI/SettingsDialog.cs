@@ -10,7 +10,7 @@ namespace Chronikologio.UI;
 public sealed class SettingsDialog : Form
 {
     private readonly MainWindow _window;
-    private readonly FlatComboBox _theme = NewCombo(), _region = NewCombo(), _language = NewCombo();
+    private readonly FlatComboBox _theme = NewCombo(), _region = NewCombo(), _language = NewCombo(), _astronomySite = NewCombo();
     private readonly FlatCheckBox _animations = new() { AutoSize = true };
     private readonly Label _animationsLabel = new();
     private readonly FlatCheckBox _autoUpdate = new() { AutoSize = true };
@@ -21,7 +21,7 @@ public sealed class SettingsDialog : Form
     private readonly Opsis.UI.FlatButton _close = new() { Width = 110, Height = 34 };
     private readonly List<(Panel Card, Label Head)> _cards = new();
     private readonly List<Label> _labels = new();
-    private readonly Label _lookLabel = new(), _regionLabel = new(), _languageLabel = new();
+    private readonly Label _lookLabel = new(), _regionLabel = new(), _languageLabel = new(), _siteLabel = new();
     private bool _filling;
 
     private readonly Dictionary<FlatComboBox, List<Choice>> _choices = new();
@@ -41,16 +41,16 @@ public sealed class SettingsDialog : Form
         KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) Close(); };
 
         var look = AddCard(Loc.T("settings.group.look"), (_lookLabel, _theme), (_animationsLabel, _animations));
-        var calendar = AddCard(Loc.T("settings.group.calendar"), (_regionLabel, _region), (_languageLabel, _language));
+        var calendar = AddCard(Loc.T("settings.group.calendar"), (_regionLabel, _region), (_languageLabel, _language), (_siteLabel, _astronomySite));
         var updates = window.UpdatesEnabled ? AddCard(Loc.T("settings.group.updates"), (new Label(), _autoUpdate), (new Label(), _checkNow)) : null;
-        ClientSize = new Size(560, 426 + (updates is null ? 0 : 140));
+        ClientSize = new Size(560, Math.Min(472 + (updates is null ? 0 : 140), Math.Max(400, Screen.FromControl(window).WorkingArea.Height - 100)));
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 56, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(0, 10, 0, 0) };
         buttons.Controls.Add(_close);
         buttons.Controls.Add(_reset);
         buttons.Controls.Add(_shortcuts);
         // dock order: the last added is laid out first, so the card that must be on top is added last
-        var stack = new Panel { Dock = DockStyle.Fill };
+        var stack = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
         look.Dock = DockStyle.Top; calendar.Dock = DockStyle.Top;
         if (updates is not null) { updates.Dock = DockStyle.Top; stack.Controls.Add(updates); stack.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 12 }); }
         stack.Controls.Add(calendar);
@@ -64,6 +64,7 @@ public sealed class SettingsDialog : Form
         _theme.SelectedIndexChanged += (_, _) => { if (!_filling && Chosen(_theme) is { } c) _window.ChooseTheme(c.Key); };
         _region.SelectedIndexChanged += (_, _) => { if (!_filling && Chosen(_region) is { } c) { _window.ChooseRegion(c.Key); Fill(); } };
         _language.SelectedIndexChanged += (_, _) => { if (!_filling && Chosen(_language) is { } c) { _window.ChooseLanguage(c.Key); } };
+        _astronomySite.SelectedIndexChanged += (_, _) => { if (!_filling && Chosen(_astronomySite) is { } c) _window.AstronomySiteSetting = c.Key; };
         _animations.CheckedChanged += (_, _) => { if (!_filling) _window.Animations = _animations.Checked; };
         _autoUpdate.CheckedChanged += (_, _) => { if (!_filling) _window.AutoUpdateCheck = _autoUpdate.Checked; };
         _checkNow.Click += async (_, _) => await _window.CheckForUpdatesAsync(true);
@@ -126,6 +127,7 @@ public sealed class SettingsDialog : Form
             Choices(_theme, ChronikologioTheme.Names.Select(n => new Choice(n, ChronikologioTheme.DisplayName(n))), ChronikologioTheme.Name);
             Choices(_region, Countries.All.Select(c => new Choice(c.Region, Loc.T("region." + c.Region))), _window.Region);
             Choices(_language, new[] { "auto", "el", "en" }.Select(c => new Choice(c, Loc.T("language." + c))), _window.LanguageSetting);
+            Choices(_astronomySite, new[] { new Choice("auto", Loc.Language == "en" ? "By country" : "Ανά χώρα") }.Concat(SkyCalendar.Sites.Select(s => new Choice(s.Id, AstronomyPage.SiteName(s.Id)))), _window.AstronomySiteSetting);
             _animations.Checked = _window.Animations;
             _autoUpdate.Checked = _window.AutoUpdateCheck;
         }
@@ -143,6 +145,7 @@ public sealed class SettingsDialog : Form
         _animations.Text = Loc.Language == "en" ? "Decorative animation (more CPU)" : "Κινούμενα γραφικά (περισσότερη CPU)";
         _regionLabel.Text = Loc.T("settings.region");
         _languageLabel.Text = Loc.T("settings.language");
+        _siteLabel.Text = Loc.Language == "en" ? "Astronomy site" : "Τόπος αστρονομίας";
         _autoUpdate.Text = Loc.T("upd.menu.auto");
         _checkNow.Text = Loc.T("upd.menu.check");
         _note.Text = Loc.T("settings.note");
@@ -177,7 +180,7 @@ public sealed class SettingsDialog : Form
     public IReadOnlyList<string> Themes => _choices[_theme].Select(c => c.Key).ToList();
     public void Pick(string which, string key)
     {
-        FlatComboBox box = which switch { "theme" => _theme, "region" => _region, _ => _language };
+        FlatComboBox box = which switch { "theme" => _theme, "region" => _region, "astronomy-site" => _astronomySite, _ => _language };
         box.SelectedIndex = _choices[box].FindIndex(c => c.Key == key);
     }
     public void Reset() => _reset.PerformClick();
