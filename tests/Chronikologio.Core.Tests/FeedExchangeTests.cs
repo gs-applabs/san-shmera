@@ -34,6 +34,21 @@ public class FeedExchangeTests
     }
 
     [Fact]
+    public void ConcurrentPublishLeavesValidJsonAndNoTemporaryFiles()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "chron-feeds-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Assert.True(FeedExchange.TryWrite(Store, Day, dir));
+            Parallel.For(0, 16, i => FeedExchange.TryWrite(Store, Day.AddDays(i % 3), dir));
+            using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(dir, FeedExchange.FileName)));
+            Assert.Equal(FeedExchange.DaysAhead, doc.RootElement.GetProperty("days").GetArrayLength());
+            Assert.Empty(Directory.GetFiles(dir, "*.tmp"));
+        }
+        finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
+    }
+
+    [Fact]
     public void WritesOnlyWhenTheContentChangesAndNeverThrows()
     {
         var dir = Path.Combine(Path.GetTempPath(), "chron-feeds-" + Guid.NewGuid().ToString("N"));
