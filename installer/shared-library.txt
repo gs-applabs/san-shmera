@@ -1,1 +1,1 @@
-Installer-managed Chronikologio library. The plugin checks the installed app version before sharing data.
+chronikologio-pack-v1
