@@ -102,7 +102,7 @@ public sealed class DailySnapshotService : IDisposable
     {
         lock (_workGate)
         {
-            if (_disposed || (onlyIfIdle && _workerRunning)) return;
+            if (_disposed || (onlyIfIdle && (_workerRunning || _current?.Date == _today()))) return;
             _pending = true;
             _pendingReload |= reload;
             if (_workerRunning) return;
