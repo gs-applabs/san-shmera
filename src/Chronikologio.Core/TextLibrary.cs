@@ -45,7 +45,52 @@ internal sealed class TextLibrary : IDisposable
         Path.GetExtension(path).Equals(".json", StringComparison.OrdinalIgnoreCase) ||
         Path.GetExtension(path).Equals(".tsv", StringComparison.OrdinalIgnoreCase);
 
-    private Stream Open(string file) => _archive is null ? File.OpenRead(file) : _entries[file].Open();
+    private long _bytesRead;
+    private Stream Open(string file)
+    {
+        if (_archive is null)
+        {
+            var stream = File.OpenRead(file);
+            if (stream.Length > MaxEntryBytes) { stream.Dispose(); throw new InvalidDataException("Oversized loose text file."); }
+            return new BoundedRead(stream, MaxEntryBytes, Account);
+        }
+        var entry = _entries[file];
+        return new BoundedRead(entry.Open(), entry.Length, Account);
+    }
+
+    private void Account(int count)
+    {
+        // Limit actual decompressed bytes, even if a corrupt archive reports a smaller length.
+        _bytesRead += count;
+        // A text file may be read more than once for different indexes, so allow
+        // repeated reads while keeping total work finite.
+        if (_bytesRead > 4 * MaxLibraryBytes) throw new InvalidDataException("Text library read budget exceeded.");
+    }
+
+    private sealed class BoundedRead(Stream source, long limit, Action<int> account) : Stream
+    {
+        private long _read;
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => _read; set => throw new NotSupportedException(); }
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset,count));
+        public override int Read(Span<byte> buffer)
+        {
+            if (buffer.IsEmpty) return 0;
+            var count = source.Read(buffer[..(int)Math.Min(buffer.Length, limit - _read + 1)]);
+            if (count > limit - _read) throw new InvalidDataException("Actual text entry exceeds declared size or limit.");
+            _read += count;
+            account(count);
+            return count;
+        }
+        protected override void Dispose(bool disposing) { if (disposing) source.Dispose(); base.Dispose(disposing); }
+        public override void Flush() => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
 
     public string ReadText(string file)
     {
