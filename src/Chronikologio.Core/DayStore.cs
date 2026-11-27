@@ -50,9 +50,17 @@ public sealed class DayStore
         if (!TraditionsOf.ContainsKey(region)) region = "gr";
         var store = new DayStore { DataRoot = dataRoot, Region = region };
         var errors = new List<string>();
+        // Enumerate once instead of traversing the entire data tree twice.
+        // Keep support for legacy text files anywhere in the data tree, including images.
+        var dataFiles = Directory.Exists(dataRoot)
+            ? Directory.EnumerateFiles(dataRoot, "*", SearchOption.AllDirectories)
+                .Where(p => Path.GetExtension(p).Equals(".json", StringComparison.OrdinalIgnoreCase)
+                         || Path.GetExtension(p).Equals(".tsv", StringComparison.OrdinalIgnoreCase))
+                .Order(StringComparer.Ordinal).ToArray()
+            : Array.Empty<string>();
         if (Directory.Exists(dataRoot))
         {
-            foreach (var file in Directory.EnumerateFiles(dataRoot, "*.json", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
+            foreach (var file in dataFiles.Where(p => Path.GetExtension(p).Equals(".json", StringComparison.OrdinalIgnoreCase)))
             {
                 try
                 {
@@ -67,7 +75,7 @@ public sealed class DayStore
             }
         }
         if (Directory.Exists(dataRoot))
-            foreach (var file in Directory.EnumerateFiles(dataRoot, "*.tsv", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
+            foreach (var file in dataFiles.Where(p => Path.GetExtension(p).Equals(".tsv", StringComparison.OrdinalIgnoreCase)))
             {
                 // births-cy.tsv belongs to the Cyprus calendar only
                 if (Path.GetFileNameWithoutExtension(file).EndsWith("-cy", StringComparison.Ordinal) && region != "cy") continue;
