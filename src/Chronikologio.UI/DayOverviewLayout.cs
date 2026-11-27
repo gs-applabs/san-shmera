@@ -266,7 +266,9 @@ public sealed class PhotoDialog : Form
 
     public static void ShowFor(IWin32Window? owner, Image image, ImageRef? info)
     {
-        using var dialog = new PhotoDialog(image, info);
+        // The day can change during the modal message loop; the dialog owns an independent full-resolution copy.
+        using var copy = new Bitmap(image);
+        using var dialog = new PhotoDialog(copy, info);
         AppIcon.Inherit(dialog, owner); dialog.ShowDialog(owner);
     }
 }
