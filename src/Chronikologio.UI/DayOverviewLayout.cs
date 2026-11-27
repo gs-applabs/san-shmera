@@ -9,13 +9,14 @@ namespace Chronikologio.UI;
 public sealed class Chip : Control
 {
     private bool _selected, _hover;
+    private readonly Font _ownedFont = new("Segoe UI", 9.5f);
 
     public Chip(bool clickable)
     {
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor, true);
         Clickable = clickable;
         Cursor = clickable ? Cursors.Hand : Cursors.Default;
-        Font = new Font("Segoe UI", 9.5f);
+        Font = _ownedFont;
         Margin = new Padding(0, 0, 6, 6);
         BackColor = Color.Transparent;
         Size = new Size(60, 26);
@@ -63,6 +64,12 @@ public sealed class Chip : Control
     }
 
     public void Restyle() => Invalidate();
+
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        if (disposing) _ownedFont.Dispose();
+    }
 }
 
 /// <summary>A card of the day: a photograph (cropped to fill the top of the card), the year, the title, a short text and the source. Without a photograph the card is lower.</summary>
@@ -180,6 +187,8 @@ public sealed class EventTile : Panel
             _image?.Dispose(); _image = null;
             if (_photo.Parent is null) _photo.Dispose();
             _tip.Dispose();
+            _title.Font.Dispose();
+            _source.Font.Dispose();
         }
         base.Dispose(disposing);
     }
@@ -298,7 +307,7 @@ public sealed class DayOverviewLayout : DayLayout
         for (var i = 0; i < _chips.Length; i++)
         {
             var index = i;
-            _chips[i].Click += (_, _) => { _filter = index; ShowCards(); };
+            _chips[i].Click += (_, _) => { if (_filter == index) return; _filter = index; ShowCards(); };
         }
         _namesCard.Controls.AddRange(new Control[] { _namesTitle, _namesAll, _etymTitle, _etymText });
         _stack.Controls.Add(_hero);
@@ -391,6 +400,9 @@ public sealed class DayOverviewLayout : DayLayout
 
     protected override void ShowDay(DayView day)
     {
+        _stack.SuspendLayout();
+        try
+        {
         _day = day;
         _mini.Selected = SelectedDate;
         ShowHero(day);
@@ -406,6 +418,8 @@ public sealed class DayOverviewLayout : DayLayout
         if (_filter < 0 || _filter > 3 || counts[_filter] == 0) _filter = Array.FindIndex(counts, c => c > 0) is var first and >= 0 ? first : 0;
         ShowCards();
         FitWidths();
+        }
+        finally { _stack.ResumeLayout(true); }
     }
 
     // the strip of days, the line of years and the text of the band follow the day and the chosen filter
@@ -434,8 +448,7 @@ public sealed class DayOverviewLayout : DayLayout
 
     private void OnMarkClicked(YearTimeline.Mark mark)
     {
-        _filter = mark.Kind;
-        ShowCards();
+        if (_filter != mark.Kind) { _filter = mark.Kind; ShowCards(); }
         if (mark.Index >= 0 && mark.Index < _cards.Controls.Count)
         {
             var tile = _cards.Controls[mark.Index];
@@ -515,6 +528,9 @@ public sealed class DayOverviewLayout : DayLayout
 
     private void ShowCards()
     {
+        _cards.SuspendLayout();
+        try
+        {
         for (var i = 0; i < _chips.Length; i++) _chips[i].Selected = i == _filter;
         ShowStrips();
         foreach (Control c in _cards.Controls.Cast<Control>().ToList()) { _cards.Controls.Remove(c); c.Dispose(); }
@@ -539,7 +555,9 @@ public sealed class DayOverviewLayout : DayLayout
             foreach (var person in people) { var (portrait, portraitInfo, portraitPath) = LoadFirst(person.Images); var tile = new EventTile(person.YearText, person.Name, person.Description, portraitInfo is null ? "" : Loc.T("event.source") + ": commons.wikimedia.org", portrait, portraitInfo, portraitPath); var who = person; tile.Opened += () => TextDialog.Show(FindForm(), who.Name, who.YearText + " — " + who.Name, (string.IsNullOrWhiteSpace(who.Details) ? who.Description : who.Description + "\n\n" + who.Details).Replace("\n", Environment.NewLine)); _cards.Controls.Add(tile); }
         }
         FitTiles(Math.Max(300, _stack.ClientSize.Width - _stack.Padding.Horizontal - SystemInformation.VerticalScrollBarWidth));
-        Paint(_cards, ChronikologioTheme.Palette, false);   // only the new cards: RestyleAll would show the day again
+        Paint(_cards, ChronikologioTheme.Palette, false);
+        }
+        finally { _cards.ResumeLayout(true); }
     }
 
     // the whole text of an event: what the card has cut, the longer text and the sources
@@ -577,7 +595,7 @@ public sealed class DayOverviewLayout : DayLayout
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) _heroImage?.Dispose();
+        if (disposing) { _heroPhoto.Image = null; _heroImage?.Dispose(); _heroImage = null; _heroTitle.Font.Dispose(); _namesTitle.Font.Dispose(); _etymTitle.Font.Dispose(); _bandText.Font.Dispose(); }
         base.Dispose(disposing);
     }
 }
