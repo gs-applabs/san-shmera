@@ -113,7 +113,7 @@ public class UiAuditTests : IDisposable
             for (var i = 0; i < kids.Count; i++)
                 for (var j = i + 1; j < kids.Count; j++)
                 {
-                    if (kids[i].Dock == DockStyle.Fill || kids[j].Dock == DockStyle.Fill) continue;
+                    if (parent is not DayHeader && (kids[i].Dock == DockStyle.Fill || kids[j].Dock == DockStyle.Fill)) continue;
                     var o = Rectangle.Intersect(kids[i].Bounds, kids[j].Bounds);
                     if (o.Width > 3 && o.Height > 3)
                         problems.Add($"overlap: {Name(kids[i])} and {Name(kids[j])} ({o.Width}x{o.Height}) in {Name(parent)}");
