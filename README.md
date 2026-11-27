@@ -105,3 +105,9 @@ build-installer.bat skip-tests   :: χωρίς τεστ
 - **Install:** download `ChronikologioSetup.exe` from Releases and check the SHA-256 in the `.sha256` file. The installer detects Opsis and installs the plugin. Without Opsis, the “On this day” feed still reaches the News Crawler (0.30.0 or newer) through a small file in your user folder. Binaries are not code-signed.
 - **Build:** .NET 11 SDK and Inno Setup 6/7; see the commands above.
 - **Licence:** MIT, see [LICENSE](LICENSE).
+
+
+## Current screenshot gallery / Νέα στιγμιότυπα
+
+[Browse application screenshots / Προβολή στιγμιοτύπων](docs/product-snapshots/README.md)
+
