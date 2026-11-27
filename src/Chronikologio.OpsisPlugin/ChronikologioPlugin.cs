@@ -13,6 +13,8 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
 
     private DailySnapshotService? _service;
     private string _language = "el";
+    private readonly object _lifecycle = new();
+    private bool _started;
 
     /// <summary>True when Opsis itself manages the updates of its plugins: the plugin then runs no update check of its own and shows no update card.</summary>
     public bool HostManagesUpdates { get; private set; }
@@ -41,6 +43,10 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
 
     public void Start()
     {
+        lock (_lifecycle)
+        {
+        if (_started) return;
+        _started = true;
         PluginLog.Write($"Start: plugin {Version}, language {_language}, host contract {typeof(PluginFeeds).Assembly.Location}");
         var service = Service;
         PluginFeeds.Register(new PluginFeed(FeedKey, "Σαν σήμερα", "On this day", BuildFeed));
@@ -48,18 +54,29 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
         service.Changed += () => 
         {
             PluginLog.Write($"snapshot ready: {service.Current?.Items.Count} lines for {service.Current?.Date}, region {service.Current?.Region}; feeds registered now: {PluginFeeds.All().Count}");
-            PluginFeeds.Register(new PluginFeed(FeedKey, "Σαν σήμερα", "On this day", BuildFeed));
+            lock (_lifecycle)
+            {
+                if (!_started || !ReferenceEquals(_service, service)) return;
+                PluginFeeds.Register(new PluginFeed(FeedKey, "Σαν σήμερα", "On this day", BuildFeed));
+            }
             FeedExchange.TryWrite(service.Store);   // for the News Crawler when it is not in this process (same content = no write)
         };
         service.Start();
         PluginLog.Write($"feed '{FeedKey}' registered; feeds known to the host: {string.Join(", ", PluginFeeds.All().Select(f => f.Key))}");
+        }
     }
 
     public void Stop()
     {
-        PluginFeeds.Unregister(FeedKey);
-        _service?.Dispose();
-        _service = null;
+        lock (_lifecycle)
+        {
+            _started = false;
+            PluginFeeds.Unregister(FeedKey);
+            _service?.Dispose();
+            _service = null;
+            _cached = null;
+            _asked = 0;
+        }
     }
 
     public void Pause() { }
@@ -109,14 +126,21 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
 
     // Called by the bars on the UI thread: only reads the ready snapshot (empty for the first moments after Start).
     private int _asked;
+    private sealed record CachedFeed(DailySnapshot Snapshot, IReadOnlyList<PluginFeedItem> Items);
+    private volatile CachedFeed? _cached;
 
     private IReadOnlyList<PluginFeedItem> BuildFeed()
     {
-        if (_asked++ < 3 || _asked % 200 == 0) PluginLog.Write($"the bars asked for the lines (time {_asked}); snapshot: {(_service?.Current is { } c ? c.Items.Count + " lines" : "not ready")}");
+        if (Interlocked.Increment(ref _asked) <= 3) PluginLog.Write($"the bars asked for the lines (time {_asked}); snapshot: {(_service?.Current is { } c ? c.Items.Count + " lines" : "not ready")}");
         var service = _service;
         if (service is null) return Array.Empty<PluginFeedItem>();
         service.CheckDate();
         var snapshot = service.Current;
-        return snapshot is null ? Array.Empty<PluginFeedItem>() : snapshot.Items.Select(i => new PluginFeedItem(i.Text)).ToList();
+        if (snapshot is null) return Array.Empty<PluginFeedItem>();
+        var cache = _cached;
+        if (cache is not null && ReferenceEquals(cache.Snapshot, snapshot)) return cache.Items;
+        var items = Array.AsReadOnly(snapshot.Items.Select(i => new PluginFeedItem(i.Text)).ToArray());
+        _cached = new CachedFeed(snapshot, items);
+        return items;
     }
 }
