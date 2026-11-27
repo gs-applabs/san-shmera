@@ -96,7 +96,12 @@ jobs:
             # Warm idle soak: sample across a minute without forcing garbage collection.
             $idle = @()
             for ($i = 0; $i -lt 7; $i++) { $idle += Sample-Resources }
-            $idleStart = $idle[1]; $idleEnd = $idle[-1]
+            # The normal updater runs at +30s and may initialize HTTP/TLS resources once.
+            # Retain all seven early samples, then separately gate a fully warmed interval.
+            $earlyIdle = $idle
+            $idle = @()
+            for ($i = 0; $i -lt 7; $i++) { $idle += Sample-Resources }
+            $idleStart = $idle[0]; $idleEnd = $idle[-1]
             $hwnd = $p.MainWindowHandle
             [void][ChronWindow]::ShowWindowAsync($hwnd, 6)
             Start-Sleep -Seconds 1
@@ -105,16 +110,47 @@ jobs:
             [void][ChronWindow]::ShowWindowAsync($hwnd, 9)
             Start-Sleep -Milliseconds 500
             if ([ChronWindow]::IsIconic($hwnd)) { throw 'Restore failed' }
-            $result = [ordered]@{ startupMs = $startup; logicalProcessors = [Environment]::ProcessorCount; visible = $visible; idleSamples = $idle; minimized = $minimized }
+            $result = [ordered]@{ startupMs = $startup; logicalProcessors = [Environment]::ProcessorCount; visible = $visible; earlyIdleSamples = $earlyIdle; idleSamples = $idle; minimized = $minimized }
             $result | ConvertTo-Json -Depth 5 | Tee-Object -FilePath smoke-metrics.json
             if ($idleEnd.privateBytes -gt ($idleStart.privateBytes + 32MB)) { throw 'Idle private memory accumulation' }
             if ($idleEnd.handles -gt ($idleStart.handles + 50)) { throw 'Idle handle accumulation' }
-            if ($idleEnd.cpuPercentOneCore -gt 5) { throw 'Excessive warm idle CPU with animations disabled' }
+            if (@($idle | Where-Object { $_.cpuPercentOneCore -gt 5 }).Count -gt 1) { throw 'Excessive warm idle CPU with animations disabled' }
             if ($minimized.cpuPercentOneCore -gt 5) { throw 'Excessive minimized CPU' }
           } finally {
             if (!$p.HasExited) { [void]$p.CloseMainWindow(); if (!$p.WaitForExit(5000)) { $p.Kill(); throw 'Desktop app failed to close gracefully' } }
             $p.Dispose()
           }
+      - name: Native painting diagnostics in isolated EXE
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force audit-metrics | Out-Null
+          $env:CHRON_PAINT_AUDIT = Join-Path (Resolve-Path audit-metrics).Path 'paint-audit.json'
+          $env:CHRON_AUDIT_NO_UPDATES = '1'
+          $p = Start-Process (Resolve-Path smoke-app/Chronikologio.exe).Path -PassThru
+          try {
+            $sw = [Diagnostics.Stopwatch]::StartNew()
+            do { Start-Sleep -Milliseconds 250; $p.Refresh(); if ($p.HasExited) { throw 'Diagnostics app exited' } } until ($p.MainWindowHandle -ne 0 -or $sw.Elapsed.TotalSeconds -ge 20)
+            if ($p.MainWindowHandle -eq 0) { throw 'Diagnostics window not found' }
+            Start-Sleep -Seconds 3
+            $p.Refresh()
+            $before = $p.TotalProcessorTime.TotalMilliseconds
+            $t = [Diagnostics.Stopwatch]::StartNew()
+            Start-Sleep -Seconds 12
+            $p.Refresh()
+            $threads = @($p.Threads | ForEach-Object {
+              try { [ordered]@{ id = $_.Id; cpuMs = $_.TotalProcessorTime.TotalMilliseconds } } catch {}
+            } | Sort-Object { $_.cpuMs } -Descending | Select-Object -First 8)
+            [ordered]@{ cpuPercentOneCore = (100 * ($p.TotalProcessorTime.TotalMilliseconds - $before) / $t.ElapsedMilliseconds); threads = $threads } |
+              ConvertTo-Json -Depth 4 | Tee-Object -FilePath audit-metrics/paint-cpu.json
+          } finally {
+            if (!$p.HasExited) { [void]$p.CloseMainWindow(); if (!$p.WaitForExit(5000)) { $p.Kill(); throw 'Diagnostic app did not close' } }
+            $p.Dispose()
+          }
+          if (!(Test-Path $env:CHRON_PAINT_AUDIT)) { throw 'Paint audit not written' }
+          $report = Get-Content $env:CHRON_PAINT_AUDIT -Raw | ConvertFrom-Json
+          $report.controls | Select-Object -First 20 | ConvertTo-Json -Depth 4 | Write-Host
       - uses: actions/upload-artifact@v4
         if: always()
         with:
