@@ -45,7 +45,7 @@ public sealed class ImageStrip : FlowLayoutPanel
             Image bitmap;
             try
             {
-                bitmap = ImageLoader.Load(store, image);   // read completely, so the file is not locked while the image is shown
+                bitmap = ImageLoader.LoadFromStore(store, image);   // read completely, so the file is not locked while the image is shown
             }
             catch (Exception ex) when (ex is ArgumentException or OutOfMemoryException or IOException)
             {
