@@ -54,6 +54,16 @@ public class PluginTests
     }
 
     [Fact]
+    public void PluginDllIdentityIsSeparateFromProductVersion()
+    {
+        var assembly = typeof(ChronikologioPlugin).Assembly;
+        Assert.Equal(new Version(1, 0, 0, 0), assembly.GetName().Version);
+        Assert.Equal("1.0.0.0", System.Diagnostics.FileVersionInfo.GetVersionInfo(assembly.Location).FileVersion);
+        var product = System.Diagnostics.FileVersionInfo.GetVersionInfo(assembly.Location).ProductVersion!;
+        Assert.Equal(product.Split('+')[0], new ChronikologioPlugin().Version);
+    }
+
+    [Fact]
     public void PluginAssemblyNameMatchesTheHostSearchPattern() =>
         Assert.EndsWith("Plugin", typeof(ChronikologioPlugin).Assembly.GetName().Name);
 }
