@@ -7,6 +7,7 @@ namespace Chronikologio.UI;
 /// <summary>Shared, on-demand tools surface using the existing Opsis palette and buttons.</summary>
 public abstract class TimeToolsPage : Panel
 {
+    private readonly Font _headingFont = new("Segoe UI", 17f, FontStyle.Bold);
     private readonly TableLayoutPanel _stack = new() { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 1 };
     protected static string T(string el, string en) => Loc.Language == "en" ? en : el;
     protected TimeToolsPage(string title, string subtitle)
@@ -24,8 +25,12 @@ public abstract class TimeToolsPage : Panel
         _stack.RowStyles.Add(new RowStyle(SizeType.Absolute, height + 10));
         _stack.Controls.Add(control, 0, row);
     }
-    protected void AddLabel(string text, int height, string tag = "") =>
-        Add(new Label { Text = text, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft, Tag = tag }, height);
+    protected void AddLabel(string text, int height, string tag = "")
+    {
+        var label = new Label { Text = text, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft, Tag = tag };
+        if (tag == "title") label.Font = _headingFont;
+        Add(label, height);
+    }
     protected static FlowLayoutPanel Row(params Control[] controls)
     {
         var row = new FlowLayoutPanel { WrapContents = false, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(10, 5, 0, 0), Tag = "card" };
@@ -65,6 +70,11 @@ public abstract class TimeToolsPage : Panel
         Paint(this, p.Background);
         Invalidate(true);
     }
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        if (disposing) _headingFont.Dispose();
+    }
 }
 
 public sealed class CalendarToolsPage : TimeToolsPage
@@ -98,7 +108,7 @@ public sealed class CalendarToolsPage : TimeToolsPage
         var convert = Button(T("Μετατροπή", "Convert"), 120);
         Add(Row(_system, _year, _month, _day, convert), 50);
         Add(_reverse, 34);
-        AddLabel(T("Προληπτικά ημερολόγια: όχι ιστορικές ημερομηνίες υιοθέτησης. Το αριθμητικό ισλαμικό μπορεί να διαφέρει από παρατηρήσεις Σελήνης. Στις επετείους 29/2 χρησιμοποιείται 28/2 σε κοινό έτος.", "Proleptic calendars, not historical adoption dates. Tabular Islamic dates may differ from observations. Feb 29 anniversaries use Feb 28 in common years."), 65, "muted");
+        AddLabel(T("Αναδρομική εφαρμογή ημερολογίων: όχι ιστορικές ημερομηνίες υιοθέτησης. Το αριθμητικό ισλαμικό μπορεί να διαφέρει από παρατηρήσεις Σελήνης. Στις επετείους 29/2 χρησιμοποιείται 28/2 σε κοινό έτος.", "Proleptic calendars, not historical adoption dates. Tabular Islamic dates may differ from observations. Feb 29 anniversaries use Feb 28 in common years."), 65, "muted");
         _first.ValueChanged += (_, _) => RefreshResults(); _second.ValueChanged += (_, _) => RefreshResults();
         convert.Click += (_, _) =>
         {
