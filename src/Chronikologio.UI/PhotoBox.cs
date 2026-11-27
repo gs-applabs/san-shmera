@@ -39,7 +39,7 @@ public sealed class PhotoBox : PictureBox
     {
         var g = e.Graphics;
         g.Clear(BackColor);
-        if (Image is null) return;
+        if (Image is null || Width <= 0 || Height <= 0) return;
         if (Contain)
         {
             // the whole picture, scaled to fit the box and centred (it may grow to fill the box)
@@ -66,7 +66,7 @@ public sealed class PhotoBox : PictureBox
         g.InterpolationMode = InterpolationMode.HighQualityBicubic;
         g.PixelOffsetMode = PixelOffsetMode.HighQuality;
         using var path = Rounded(new RectangleF(r.X, r.Y, r.Width - 1, r.Height - 1), 5f);
-        var clip = g.Clip;
+        using var clip = g.Clip;
         g.SetClip(path, CombineMode.Intersect);
         g.DrawImage(Image, r);
         g.Clip = clip;
