@@ -161,7 +161,7 @@ public sealed class DayHeader : Panel
     {
         SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.ResizeRedraw, true);
         _tick = () => { if (WaveClock.ShouldDraw(this)) Invalidate(); };
-        WaveClock.Subscribe(_tick);
+        WaveClock.Subscribe(this, _tick);
         Dock = DockStyle.Top;
         Height = 70;
         Padding = new Padding(4, 4, 4, 2);
