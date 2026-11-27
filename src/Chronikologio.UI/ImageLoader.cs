@@ -35,7 +35,7 @@ public static class ImageLoader
         return IsWebp(bytes) ? DecodeWebp(bytes) : DecodeGdi(bytes);
     }
 
-    public static Image Load(DayStore store, ImageRef image)
+    public static Image LoadFromStore(DayStore store, ImageRef image)
     {
         try
         {
