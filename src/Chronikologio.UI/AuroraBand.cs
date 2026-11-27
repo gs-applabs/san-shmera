@@ -110,6 +110,8 @@ public sealed class YearTimeline : Control
     private readonly List<Mark> _marks = new();
     private readonly ToolTip _tip = new();
     private int _hover = -1;
+    private PointF[]? _points;
+    private Size _pointSize;
 
     // years where the scale changes: the antiquity is squeezed, the 19th and 20th centuries are wide
     private static readonly (int Year, double At)[] Anchors = { (-1500, 0.0), (0, 0.16), (1000, 0.30), (1500, 0.43), (1800, 0.62), (1900, 0.8), (2030, 1.0) };
@@ -130,6 +132,7 @@ public sealed class YearTimeline : Control
         _marks.Clear();
         _marks.AddRange(marks.OrderBy(m => m.Year));
         _hover = -1;
+        _points = null;
         AccessibleDescription = string.Join("; ", _marks.Take(12).Select(m => MarkText(m)));
         Invalidate();
     }
@@ -145,16 +148,21 @@ public sealed class YearTimeline : Control
         return 1.0;
     }
 
-    private PointF PointOf(Mark m, int index)
+    private PointF[] Points()
     {
-        const int pad = 22;
-        var x = pad + (float)(Position(m.Year) * (Width - 2 * pad));
-        // marks of the same period do not sit on each other: they step up and down
-        var row = _marks.Take(index).Count(o => Math.Abs(PointOf0(o) - x) < 11) % 3;
-        return new PointF(x, Height / 2f - 14 + row * 11);
+        if (_points is not null && _pointSize == Size) return _points;
+        _pointSize = Size;
+        var points = new PointF[_marks.Count];
+        var left = 0;
+        var span = Math.Max(0, Width - 44);
+        for (var i = 0; i < _marks.Count; i++)
+        {
+            var x = 22 + (float)(Position(_marks[i].Year) * span);
+            while (left < i && x - points[left].X >= 11) left++;
+            points[i] = new PointF(x, Height / 2f - 14 + (i - left) % 3 * 11);
+        }
+        return _points = points;
     }
-
-    private float PointOf0(Mark m) => 22 + (float)(Position(m.Year) * (Width - 44));
 
     protected override void OnPaint(PaintEventArgs e)
     {
@@ -177,7 +185,7 @@ public sealed class YearTimeline : Control
         for (var i = 0; i < _marks.Count; i++)
         {
             var m = _marks[i];
-            var pt = PointOf(m, i);
+            var pt = Points()[i];
             var color = m.Kind switch { 0 => p.Accent, 1 => Color.FromArgb(226, 180, 74), 2 => Color.FromArgb(120, 200, 130), _ => Color.FromArgb(200, 110, 110) };
             var r = i == _hover ? 6.5f : 4.5f;
             using var stem = new Pen(Color.FromArgb(80, color), 1f);
@@ -191,11 +199,11 @@ public sealed class YearTimeline : Control
 
     private int HitTest(Point at)
     {
-        var best = -1; var bestD = 12.0;
+        var best = -1; var bestD = 144.0;
         for (var i = 0; i < _marks.Count; i++)
         {
-            var pt = PointOf(_marks[i], i);
-            var d = Math.Sqrt((pt.X - at.X) * (pt.X - at.X) + (pt.Y - at.Y) * (pt.Y - at.Y));
+            var pt = Points()[i];
+            var d = (pt.X - at.X) * (pt.X - at.X) + (pt.Y - at.Y) * (pt.Y - at.Y);
             if (d < bestD) { best = i; bestD = d; }
         }
         return best;
