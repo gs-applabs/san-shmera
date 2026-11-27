@@ -172,7 +172,7 @@ public sealed class DayHeader : Panel
 
     public DayHeader()
     {
-        SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.ResizeRedraw, true);
+        SetStyle(ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.ResizeRedraw, true);
         _tick = () => { if (WaveClock.ShouldDraw(this)) Invalidate(); };
         WaveClock.Subscribe(this, _tick);
         Dock = DockStyle.Top;
@@ -235,17 +235,8 @@ public sealed class DayHeader : Panel
 
     private readonly Action _tick;
 
-    // the whole header (waves and the controls on them) is painted into one buffer and shown at once: nothing flickers while the lines move
-    protected override CreateParams CreateParams
-    {
-        get
-        {
-            var cp = base.CreateParams;
-            cp.ExStyle |= 0x02000000;   // WS_EX_COMPOSITED
-            return cp;
-        }
-    }
-
+    // Buffer the header itself, not the entire native child-window tree.
+    // WS_EX_COMPOSITED can repeatedly schedule descendant painting with transparent controls.
     protected override void OnPaintBackground(PaintEventArgs e)
     {
         var p = ChronikologioTheme.Palette;
