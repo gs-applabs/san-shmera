@@ -19,7 +19,7 @@ public sealed class AstronomyPage : TimeToolsPage
         _ => id
     };
     public AstronomyPage(DateOnly selected, string siteId) : base(T("Αστρονομικό ημερολόγιο", "Astronomical calendar"),
-        T("Τοπικοί υπολογισμοί 1800–2100 · Ήλιος, Σελήνη, εποχές και εκλείψεις.", "Offline predictions 1800–2100 · Sun, Moon, seasons and eclipses."))
+        T("Τοπικοί υπολογισμοί 1800–2100 · Ήλιος, Σελήνη, εκλείψεις και πλανήτες.", "Offline predictions 1800–2100 · Sun, Moon, eclipses and planets."))
     {
         _date = Picker(selected, SkyCalendar.MinYear, SkyCalendar.MaxYear);
         _date.AccessibleName = T("Ημερομηνία", "Date");
@@ -73,12 +73,18 @@ public sealed class AstronomyPage : TimeToolsPage
         "september" => T("Φθινοπωρινή ισημερία", "September equinox"), "december" => T("Χειμερινό ηλιοστάσιο", "December solstice"),
         "moon-0" => T("Νέα Σελήνη", "New moon"), "moon-1" => T("Πρώτο τέταρτο", "First quarter"),
         "moon-2" => T("Πανσέληνος", "Full moon"), "moon-3" => T("Τελευταίο τέταρτο", "Last quarter"),
-        "solar-eclipse" => T("Ηλιακή έκλειψη", "Solar eclipse"), "lunar-eclipse" => T("Σεληνιακή έκλειψη", "Lunar eclipse"), _ => kind
+        "solar-eclipse" => T("Ηλιακή έκλειψη", "Solar eclipse"), "lunar-eclipse" => T("Σεληνιακή έκλειψη", "Lunar eclipse"),
+        "superior-conjunction" => T("Ανώτερη σύνοδος με Ήλιο", "Superior conjunction"),
+        "inferior-conjunction" => T("Κατώτερη σύνοδος με Ήλιο", "Inferior conjunction"),
+        "opposition" => T("Αντίθεση πλανήτη", "Planetary opposition"), _ => kind
     };
     private static string Detail(string kind) => kind switch
     {
         "Total" => T("Ολική", "Total"), "Partial" => T("Μερική", "Partial"), "Annular" => T("Δακτυλιοειδής", "Annular"),
-        "Penumbral" => T("Παρασκιάς", "Penumbral"), _ => kind
+        "Penumbral" => T("Παρασκιάς", "Penumbral"),
+        "Mercury" => T("Ερμής", "Mercury"), "Venus" => T("Αφροδίτη", "Venus"), "Mars" => T("Άρης", "Mars"),
+        "Jupiter" => T("Δίας", "Jupiter"), "Saturn" => T("Κρόνος", "Saturn"), "Uranus" => T("Ουρανός", "Uranus"),
+        "Neptune" => T("Ποσειδώνας", "Neptune"), _ => kind
     };
     private async Task CalculateYear()
     {
