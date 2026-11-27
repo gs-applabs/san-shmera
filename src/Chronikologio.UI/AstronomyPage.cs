@@ -33,12 +33,12 @@ public sealed class AstronomyPage : TimeToolsPage
         _calculate = Button(T("Υπολογισμός έτους", "Calculate year"), 185);
         Add(Row(_calculate, _status), 48);
         _status.Width = 430; _status.Height = 32;
-        _annual = Table((T("Φαινόμενο", "Event"), 280), (T("Μέγιστο / χρόνος UTC", "Peak / time UTC"), 240), (T("Τύπος", "Type"), 115));
+        _annual = Table((T("Φαινόμενο", "Event"), 280), (T("Μέγιστο / χρόνος UTC", "Peak / time UTC"), 240), (T("Τύπος / ύψος / κάλυψη", "Type / altitude / coverage"), 230));
         Add(_annual, 340);
-        AddLabel(T("Εκλείψεις: παγκόσμιο μέγιστο, όχι εγγύηση τοπικής ορατότητας. Οι ανατολές/δύσεις είναι προσεγγίσεις για ορίζοντα στο επίπεδο της θάλασσας. Δεν χρησιμοποιείται για ναυσιπλοΐα.", "Eclipses: global peak, not local visibility. Rise/set predictions assume a sea-level horizon. Not for navigation."), 65, "muted");
+        AddLabel(T("Εκλείψεις: παγκόσμια και τοπικά στοιχεία σε UTC. Αρνητικό ύψος = κάτω από τον ορίζοντα στη συγκεκριμένη στιγμή. Ο καιρός και το ανάγλυφο δεν λαμβάνονται υπόψη. Παρατήρηση Ήλιου μόνο με πιστοποιημένο φίλτρο.", "Eclipses: global and local circumstances in UTC. Negative altitude means below horizon at that instant. Weather and terrain are not modelled. Use certified solar eye protection."), 80, "muted");
         AddLabel("Astronomy Engine 2.1.19 · Don Cross · MIT · github.com/cosinekitty/astronomy", 32, "muted");
         _date.ValueChanged += (_, _) => { ResetAnnual(); RefreshDay(); };
-        _site.SelectedIndexChanged += (_, _) => RefreshDay();
+        _site.SelectedIndexChanged += (_, _) => { ResetAnnual(); RefreshDay(); };
         _calculate.Click += async (_, _) => await CalculateYear();
         RefreshDay(); Restyle();
     }
@@ -76,7 +76,7 @@ public sealed class AstronomyPage : TimeToolsPage
         "september" => T("Φθινοπωρινή ισημερία", "September equinox"), "december" => T("Χειμερινό ηλιοστάσιο", "December solstice"),
         "moon-0" => T("Νέα Σελήνη", "New moon"), "moon-1" => T("Πρώτο τέταρτο", "First quarter"),
         "moon-2" => T("Πανσέληνος", "Full moon"), "moon-3" => T("Τελευταίο τέταρτο", "Last quarter"),
-        "solar-eclipse" => T("Ηλιακή έκλειψη", "Solar eclipse"), "lunar-eclipse" => T("Σεληνιακή έκλειψη", "Lunar eclipse"),
+        "solar-eclipse" => T("Παγκόσμια ηλιακή έκλειψη", "Global solar eclipse"), "lunar-eclipse" => T("Σεληνιακή — παγκόσμιο μέγιστο", "Lunar — global peak"),
         "superior-conjunction" => T("Ανώτερη σύνοδος με Ήλιο", "Superior conjunction"),
         "inferior-conjunction" => T("Κατώτερη σύνοδος με Ήλιο", "Inferior conjunction"),
         "opposition" => T("Αντίθεση πλανήτη", "Planetary opposition"), _ => kind
@@ -95,14 +95,40 @@ public sealed class AstronomyPage : TimeToolsPage
         using var cts = new CancellationTokenSource();
         _work = cts; _calculate.Enabled = false;
         int year = _date.Value.Year;
+        var site = SkyCalendar.Sites[Math.Max(0,_site.SelectedIndex)];
         _status.Text = T("Υπολογισμός…", "Calculating…");
         try
         {
-            var events = await Task.Run(() => SkyCalendar.ForYear(year, cts.Token), cts.Token);
-            if (!cts.IsCancellationRequested && !IsDisposed && !Disposing && _date.Value.Year == year)
+            var result = await Task.Run(() =>
             {
-                Rows(_annual, events.Select(e => new[] { EventName(e.Kind), e.Utc.ToString("dd/MM/yyyy HH:mm"), Detail(e.Detail) }));
-                _status.Text = $"{year} · {events.Count} " + T("φαινόμενα", "events");
+                var events = SkyCalendar.ForYear(year, cts.Token);
+                var rows = new List<(DateTime Utc, string[] Cells)>();
+                foreach (var e in events)
+                {
+                    cts.Token.ThrowIfCancellationRequested();
+                    var detail = Detail(e.Detail);
+                    if (e.Kind == "lunar-eclipse")
+                    {
+                        var peak = SkyCalendar.LunarPeakAt(e.Utc, site);
+                        detail += $" · {peak.MoonAltitudeDegrees:F1}°";
+                    }
+                    rows.Add((e.Utc, new[] { EventName(e.Kind), e.Utc.ToString("dd/MM/yyyy HH:mm"), detail }));
+                }
+                foreach (var eclipse in SkyCalendar.LocalSolarForYear(year, site, cts.Token))
+                {
+                    var prefix = T("Τοπική ηλιακή — ", "Local solar — ");
+                    void Contact(string name, SkyCalendar.SolarContact contact, string extra = "")
+                        => rows.Add((contact.Utc, new[] { prefix + name, contact.Utc.ToString("dd/MM/yyyy HH:mm"), $"{contact.AltitudeDegrees:F1}°" + extra }));
+                    Contact(T("έναρξη", "start"), eclipse.Begin);
+                    Contact(T("μέγιστο", "peak"), eclipse.Peak, " · " + eclipse.ObscuredFraction.ToString("P1") + " · " + Detail(eclipse.Kind));
+                    Contact(T("λήξη", "end"), eclipse.End);
+                }
+                return (Rows: rows.OrderBy(x => x.Utc).Select(x => x.Cells).ToArray(), Count: events.Count);
+            }, cts.Token);
+            if (!cts.IsCancellationRequested && !IsDisposed && !Disposing && _date.Value.Year == year && SkyCalendar.Sites[Math.Max(0,_site.SelectedIndex)] == site)
+            {
+                Rows(_annual, result.Rows);
+                _status.Text = $"{year} · {SiteName(site.Id)} · {result.Count} " + T("παγκόσμια φαινόμενα", "global events");
             }
         }
         catch (OperationCanceledException) { }
