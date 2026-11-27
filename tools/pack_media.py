@@ -3,6 +3,8 @@
 import argparse
 import hashlib
 import json
+import stat
+import shutil
 from pathlib import Path
 import tempfile
 import zipfile
@@ -17,11 +19,19 @@ def main():
     args = parser.parse_args()
     root = args.data.resolve()
     images = root / "images"
+    source = (Path(__file__).resolve().parents[1] / "data").resolve()
+    if args.remove_loose and (root == source or root.is_relative_to(source) or source.is_relative_to(root)):
+        raise SystemExit("Refusing to remove files in or around the source repository data")
+    if not root.is_dir():
+        raise SystemExit("Data folder missing")
+    # Never follow symbolic links or Windows reparse points, even when they point inside the staging area.
+    for path in [root, *root.rglob("*")]:
+        info = path.lstat()
+        if path.is_symlink() or getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400):
+            raise SystemExit(f"Refusing linked/reparse entry: {path}")
     files = sorted(p for p in images.rglob("*") if p.is_file() and p.suffix.lower() in EXTENSIONS)
     if not files:
         raise SystemExit("No source images found")
-    if args.remove_loose and root == (Path(__file__).resolve().parents[1] / "data"):
-        raise SystemExit("Refusing to remove source repository images")
     texts = sorted(p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in {".json", ".tsv"})
     if not texts:
         raise SystemExit("No source texts found")
@@ -57,7 +67,12 @@ def main():
         text_pack = Path(work) / "texts.pack"
         with zipfile.ZipFile(text_pack, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as z:
             for path in texts:
-                z.write(path, path.relative_to(root).as_posix())
+                info = zipfile.ZipInfo(path.relative_to(root).as_posix(), date_time=(1980, 1, 1, 0, 0, 0))
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.external_attr = 0o100644 << 16
+                info.create_system = 3
+                with path.open("rb") as src, z.open(info, "w") as dst:
+                    shutil.copyfileobj(src, dst, length=128 * 1024)
         with zipfile.ZipFile(text_pack) as z:
             if len(z.infolist()) != len(texts):
                 raise RuntimeError("Missing or repeated text path")
