@@ -257,7 +257,7 @@ public sealed class DayHeader : Panel
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { WaveClock.Unsubscribe(_tick); _tip.Dispose(); }
+        if (disposing && !IsDisposed) { WaveClock.Unsubscribe(_tick); _tip.Dispose(); _date.Font.Dispose(); }
         base.Dispose(disposing);
     }
 }
@@ -270,6 +270,7 @@ public abstract class DayLayout : UserControl
 {
     protected DayStore Store;
     private DateOnly _date = DateOnly.FromDateTime(DateTime.Today);
+    private bool _hasRendered;
     protected readonly DayHeader Header = new();
 
     public event Action<DateOnly>? DateChanged;
@@ -339,6 +340,7 @@ public abstract class DayLayout : UserControl
         var day = Store.GetDay(_date);
         Header.Set(_date, day, Store.Region);
         ShowDay(day);
+        _hasRendered = true;
     }
 
     private void OnLanguage()
@@ -356,8 +358,11 @@ public abstract class DayLayout : UserControl
         BackColor = p.Background;
         Header.Restyle();
         Paint(this, p, false);
-        Refresh_();
+        if (!_hasRendered) Refresh_();
+        OnPaletteChanged();
     }
+
+    protected virtual void OnPaletteChanged() { }
 
     /// <summary>Applies the palette to a control tree: cards and inputs take the surface colour, the rest the background. Self-styled controls are left alone.</summary>
     /// <summary>Black or white, whichever reads better on the accent colour.</summary>
