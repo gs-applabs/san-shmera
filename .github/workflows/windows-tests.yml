@@ -93,6 +93,10 @@ jobs:
             }
             Start-Sleep -Seconds 3
             $visible = Sample-Resources
+            # Warm idle soak: sample across a minute without forcing garbage collection.
+            $idle = @()
+            for ($i = 0; $i -lt 7; $i++) { $idle += Sample-Resources }
+            $idleStart = $idle[1]; $idleEnd = $idle[-1]
             $hwnd = $p.MainWindowHandle
             [void][ChronWindow]::ShowWindowAsync($hwnd, 6)
             Start-Sleep -Seconds 1
@@ -101,8 +105,12 @@ jobs:
             [void][ChronWindow]::ShowWindowAsync($hwnd, 9)
             Start-Sleep -Milliseconds 500
             if ([ChronWindow]::IsIconic($hwnd)) { throw 'Restore failed' }
-            $result = [ordered]@{ startupMs = $startup; logicalProcessors = [Environment]::ProcessorCount; visible = $visible; minimized = $minimized }
-            $result | ConvertTo-Json -Depth 4 | Tee-Object -FilePath smoke-metrics.json
+            $result = [ordered]@{ startupMs = $startup; logicalProcessors = [Environment]::ProcessorCount; visible = $visible; idleSamples = $idle; minimized = $minimized }
+            $result | ConvertTo-Json -Depth 5 | Tee-Object -FilePath smoke-metrics.json
+            if ($idleEnd.privateBytes -gt ($idleStart.privateBytes + 32MB)) { throw 'Idle private memory accumulation' }
+            if ($idleEnd.handles -gt ($idleStart.handles + 50)) { throw 'Idle handle accumulation' }
+            if ($idleEnd.cpuPercentOneCore -gt 5) { throw 'Excessive warm idle CPU with animations disabled' }
+            if ($minimized.cpuPercentOneCore -gt 5) { throw 'Excessive minimized CPU' }
           } finally {
             if (!$p.HasExited) { [void]$p.CloseMainWindow(); if (!$p.WaitForExit(5000)) { $p.Kill(); throw 'Desktop app failed to close gracefully' } }
             $p.Dispose()
