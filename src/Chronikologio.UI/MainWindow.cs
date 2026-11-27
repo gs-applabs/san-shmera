@@ -21,6 +21,9 @@ public sealed class MainWindow : Form
     private readonly Panel _host = new() { Dock = DockStyle.Fill };
     private readonly SideRail _rail = new();
     private DayLayout _layout;
+    private TimeToolsPage? _toolsPage;
+    public string ActivePage { get; private set; } = "today";
+    private static string T(string el, string en) => Loc.Language == "en" ? en : el;
     private DateOnly _date = DateOnly.FromDateTime(DateTime.Today);
 
     /// <summary>Set by the stand-alone program: called with the store whenever the lines of the day may have changed (start, country, language), so the News Crawler can show them without Opsis. The tests never set it.</summary>
@@ -94,11 +97,49 @@ public sealed class MainWindow : Form
         _rail.BrandVersion = "v" + UpdateChecker.Norm(UpdateChecker.Current);
         _rail.SetItems(new[]
         {
-            new SideRail.RailItem("today", "\uE787", Loc.T("menu.today") + " (Ctrl+Home)", GoToday, Loc.T("menu.today")),
-            new SideRail.RailItem("theme", "\uE790", Loc.T("menu.theme") + " (Ctrl+T)", CycleTheme, Loc.T("menu.theme")),
+            new SideRail.RailItem("today", "\uE787", Loc.T("menu.today") + " (Ctrl+Home)", GoToday, Loc.T("menu.today"), T("ΗΜΕΡΟΛΟΓΙΟ", "CALENDAR")),
+            new SideRail.RailItem("calendar-tools", "\uE787", T("Μετατροπές και υπολογισμοί (Ctrl+1)", "Conversions and calculations (Ctrl+1)"), () => OpenPage("calendar-tools"), T("Εργαλεία ημερολογίου", "Calendar tools")),
+            new SideRail.RailItem("astronomy", "\uE708", T("Ήλιος, Σελήνη, εκλείψεις (Ctrl+2)", "Sun, Moon, eclipses (Ctrl+2)"), () => OpenPage("astronomy"), T("Αστρονομικό ημερολόγιο", "Astronomy"), T("ΑΣΤΡΟΝΟΜΙΑ", "ASTRONOMY")),
+            new SideRail.RailItem("theme", "\uE790", Loc.T("menu.theme") + " (Ctrl+T)", CycleTheme, Loc.T("menu.theme"), T("ΕΦΑΡΜΟΓΗ", "APPLICATION")),
             new SideRail.RailItem("settings", "", Loc.T("menu.settings") + " (Ctrl+,)", ShowSettings, Loc.T("menu.settings")),
             new SideRail.RailItem("help", "", Loc.T("menu.about") + " (F1)", ShowGuide, Loc.T("menu.about"))
         });
+        _rail.Checked = ActivePage;
+    }
+
+    public string AstronomySiteSetting
+    {
+        get => _settings.AstronomySite;
+        set
+        {
+            if (value != "auto" && !SkyCalendar.Sites.Any(x => x.Id == value)) return;
+            _settings.AstronomySite = value; _settings.Save(_settingsPath);
+            if (ActivePage == "astronomy") RebuildToolPage();
+        }
+    }
+    private string EffectiveSite => _settings.AstronomySite == "auto" ? (Region == "cy" ? "nicosia" : "athens") : _settings.AstronomySite;
+    public void OpenPage(string page)
+    {
+        if (page is not ("today" or "calendar-tools" or "astronomy") || ActivePage == page) return;
+        ActivePage = page;
+        RebuildToolPage();
+    }
+    private void RebuildToolPage()
+    {
+        _host.SuspendLayout();
+        try
+        {
+            if (_toolsPage is not null) { _host.Controls.Remove(_toolsPage); _toolsPage.Dispose(); _toolsPage = null; }
+            _layout.Visible = ActivePage == "today";
+            if (ActivePage != "today")
+            {
+                _searchBar.Clear();
+                _toolsPage = ActivePage == "calendar-tools" ? new CalendarToolsPage(_date) : new AstronomyPage(_date, EffectiveSite);
+                _host.Controls.Add(_toolsPage); _toolsPage.BringToFront();
+            }
+            _rail.Checked = ActivePage;
+        }
+        finally { _host.ResumeLayout(true); }
     }
 
     /// <summary>The day shown on the screen.</summary>
@@ -107,6 +148,7 @@ public sealed class MainWindow : Form
     /// <summary>Goes to today on the screen and the shared calendar, and makes the button of the side menu light up for a moment so the click is seen even when today is already shown.</summary>
     public void GoToday()
     {
+        OpenPage("today");
         SetDate(DateOnly.FromDateTime(DateTime.Today));
         _rail.Pulse("today");
     }
@@ -129,6 +171,7 @@ public sealed class MainWindow : Form
         Loc.Set(Countries.Resolve(_settings.Language, region));
         _layout.SetStore(store);
         _searchBar.SetStore(store);
+        if (ActivePage == "astronomy") RebuildToolPage();
         PublishFeed?.Invoke(store);
     }
 
@@ -139,6 +182,7 @@ public sealed class MainWindow : Form
         _searchBar.SetPlaceholder(Loc.T("search.placeholder"));
         _searchBar.SetStore(_store);
         BuildRail();
+        if (_toolsPage is not null) RebuildToolPage();
     }
 
     /// <summary>The language of the interface: "auto" (that of the country), "el" or "en". Kept apart from the country and remembered.</summary>
@@ -176,8 +220,10 @@ public sealed class MainWindow : Form
             case Keys.Control | Keys.Home: GoToday(); return true;
             case Keys.F1: ShowGuide(); return true;
             case Keys.Control | Keys.Oemcomma: ShowSettings(); return true;
-            case Keys.Control | Keys.F: _searchBar.Focus(); return true;
-            case Keys.Control | Keys.K: _searchBar.Focus(); return true;
+            case Keys.Control | Keys.D1: OpenPage("calendar-tools"); return true;
+            case Keys.Control | Keys.D2: OpenPage("astronomy"); return true;
+            case Keys.Control | Keys.F:
+            case Keys.Control | Keys.K: OpenPage("today"); _searchBar.Focus(); return true;
             default: return false;
         }
     }
@@ -253,6 +299,7 @@ public sealed class MainWindow : Form
         ForeColor = p.Text;
         _searchBar.Restyle();
         _rail.Invalidate();
+        _toolsPage?.Restyle();
         if (IsHandleCreated) TitleBar.Apply(Handle, p.IsDark);
         Invalidate(true);
     }
