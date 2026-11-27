@@ -134,7 +134,7 @@ public sealed class MainWindow : Form
             if (ActivePage != "today")
             {
                 _searchBar.Clear();
-                _toolsPage = ActivePage == "calendar-tools" ? new CalendarToolsPage(_date) : new AstronomyPage(_date, EffectiveSite);
+                _toolsPage = ActivePage == "calendar-tools" ? new CalendarToolsPage(_date, Region) : new AstronomyPage(_date, EffectiveSite);
                 _host.Controls.Add(_toolsPage); _toolsPage.BringToFront();
             }
             _rail.Checked = ActivePage;
@@ -171,7 +171,7 @@ public sealed class MainWindow : Form
         Loc.Set(Countries.Resolve(_settings.Language, region));
         _layout.SetStore(store);
         _searchBar.SetStore(store);
-        if (ActivePage == "astronomy") RebuildToolPage();
+        if (ActivePage != "today") RebuildToolPage();
         PublishFeed?.Invoke(store);
     }
 
