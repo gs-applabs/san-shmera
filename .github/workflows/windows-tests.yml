@@ -39,6 +39,13 @@ jobs:
           CHRON_METRICS_DIR: ${{ github.workspace }}/audit-metrics
         run: dotnet test tests/Chronikologio.Plugin.Tests -c Release --nologo
 
+      - name: Long navigation resource soak (720 dates)
+        if: ${{ !cancelled() }}
+        env:
+          CHRON_SOAK: "1"
+          CHRON_METRICS_DIR: ${{ github.workspace }}/audit-metrics
+        run: dotnet test tests/Chronikologio.Plugin.Tests -c Release --nologo --filter FullyQualifiedName~LongNavigationMaintainsABoundedResourcePlateau
+
       - name: Publish desktop app
         if: ${{ !cancelled() }}
         run: dotnet publish src/Chronikologio.Windows -c Release -o smoke-app --nologo
