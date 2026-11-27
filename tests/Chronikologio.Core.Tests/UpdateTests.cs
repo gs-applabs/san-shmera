@@ -78,6 +78,8 @@ public sealed class UpdateTests : IDisposable
     [InlineData("[]")]
     [InlineData("{\"tag_name\":\"hello\"}")]
     [InlineData("{}")]
+    [InlineData("{\"tag_name\":123}")]
+    [InlineData("{\"tag_name\":\"v0.9.0\",\"assets\":[42]}")]
     public void ABadAnswerIsReportedNotThrown(string json) => Assert.Equal(UpdateOutcome.BadAnswer, UpdateChecker.Parse(json, Now).Outcome);
 
     [Fact]
