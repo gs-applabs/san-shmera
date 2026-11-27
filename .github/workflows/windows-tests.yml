@@ -31,6 +31,10 @@ jobs:
         shell: pwsh
         run: python tools/audit_data_footprint.py
 
+      - name: Inventory declared content rights (not legal clearance)
+        shell: pwsh
+        run: python tools/audit_content_rights.py --output audit-metrics/content-rights.json
+
       - name: Tests
         run: dotnet test tests/Chronikologio.Core.Tests --nologo
 
