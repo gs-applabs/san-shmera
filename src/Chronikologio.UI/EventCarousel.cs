@@ -136,7 +136,7 @@ public sealed class EventCarousel : Panel
             try
             {
                 info = candidate;
-                return ImageLoader.Load(_store, candidate);
+                return ImageLoader.LoadFromStore(_store, candidate);
             }
             catch (Exception ex) when (ex is ArgumentException or OutOfMemoryException or IOException) { }
         }
