@@ -18,7 +18,6 @@ public sealed class MainWindow : Form
     private readonly UiSettings _settings;
     private readonly string? _settingsPath;
     private readonly SearchBar _searchBar = new();
-    private readonly CalendarPanel _panel;
     private readonly Panel _host = new() { Dock = DockStyle.Fill };
     private readonly SideRail _rail = new();
     private DayLayout _layout;
@@ -43,17 +42,6 @@ public sealed class MainWindow : Form
         if (_settings.Maximized) WindowState = FormWindowState.Maximized;
         KeyPreview = true;
         FormClosing += (_, _) => SaveWindowState();
-
-        _panel = new CalendarPanel(_store) { Dock = DockStyle.Fill, SettingsPath = settingsPath };
-        _panel.SelectedDateChanged += SetDate;
-        _panel.StoreChanged += store =>
-        {
-            _store = store;
-            _layout.SetStore(store);
-            _settings.Region = store.Region;   // the panel saved it already; keep this copy in step so later saves do not undo it
-            _searchBar.SetStore(store);
-            PublishFeed?.Invoke(store);
-        };
 
         _layout = new DayOverviewLayout(_store) { Dock = DockStyle.Fill };
         _layout.SelectedDate = _date;
@@ -127,13 +115,20 @@ public sealed class MainWindow : Form
     {
         _date = date;
         _layout.SelectedDate = date;
-        if (_panel.SelectedDate != date) _panel.SelectedDate = date;
     }
 
     /// <summary>Switches the database and, with it, the interface language (the flag button of the screen does the same).</summary>
     public void ChooseRegion(string region)
     {
-        _panel.ChooseRegion(region);
+        if (!DayStore.Regions.Contains(region) || region == _store.Region) return;
+        var store = DayStore.Load(_dataRoot, region);
+        _store = store;
+        _settings.Region = region;
+        _settings.Save(_settingsPath);
+        Loc.Set(Countries.Resolve(_settings.Language, region));
+        _layout.SetStore(store);
+        _searchBar.SetStore(store);
+        PublishFeed?.Invoke(store);
     }
 
     /// <summary>Texts of the window in the language of the chosen country.</summary>
@@ -198,6 +193,7 @@ public sealed class MainWindow : Form
     /// <summary>Turns on the update of the stand-alone app (the plugin inside Opsis never calls this): a check 30 seconds after the start and then every 24 hours. Never blocks the window.</summary>
     public void EnableUpdates(UpdateChecker? checker = null)
     {
+        if (_updates is not null) return;
         _updates = checker ?? new UpdateChecker();
         _updateTimer = new System.Windows.Forms.Timer { Interval = 30_000 };
         _updateTimer.Tick += async (_, _) => { _updateTimer.Interval = (int)TimeSpan.FromHours(24).TotalMilliseconds; if (_settings.CheckForUpdates) await CheckForUpdatesAsync(false); };
@@ -213,6 +209,7 @@ public sealed class MainWindow : Form
         try
         {
             var result = await _updates.CheckAsync(UpdateChecker.Current, manual);
+            if (IsDisposed || Disposing) return;
             if (result.Outcome == UpdateOutcome.Available && result.Update is { } info)
             {
                 var choice = UpdateUi.Offer(this, info);
