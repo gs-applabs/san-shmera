@@ -1,4 +1,5 @@
 using System.Drawing.Drawing2D;
+using Chronikologio.Core;
 
 namespace Chronikologio.UI;
 
