@@ -37,6 +37,9 @@ public sealed class SideRail : Control
     private readonly ToolTip _tip = new();
     private readonly Action _tick;
     private int _hover = -1;
+    private int _lastLogoCycle = -1;
+    private bool _lastFlipping;
+    private readonly System.Windows.Forms.Timer _pulseTimer = new() { Interval = 350 };
     private string? _checked;
 
     public const int RailWidth = 224;
@@ -53,8 +56,18 @@ public sealed class SideRail : Control
         Dock = DockStyle.Left;
         Width = RailWidth;
         Cursor = Cursors.Hand;
-        _tick = () => { if (WaveClock.ShouldDraw(this)) Invalidate(new Rectangle(0, 0, Width, BrandHeight)); };   // only the logo moves
-        WaveClock.Subscribe(_tick);
+        _tick = () =>
+        {
+            var seconds = WaveClock.Time / 0.4;
+            var cycle = (int)(seconds / 4.0);
+            var flipping = seconds % 4.0 > 3.28;
+            if (flipping || _lastFlipping || cycle != _lastLogoCycle)
+                Invalidate(new Rectangle(0, 0, Width, BrandHeight));
+            _lastLogoCycle = cycle;
+            _lastFlipping = flipping;
+        };
+        WaveClock.Subscribe(this, _tick);
+        _pulseTimer.Tick += (_, _) => { _pulseTimer.Stop(); _pulse = null; Invalidate(); };
     }
 
     public IReadOnlyList<RailItem> Items => _items;
@@ -83,9 +96,8 @@ public sealed class SideRail : Control
     {
         _pulse = key;
         Invalidate();
-        var timer = new System.Windows.Forms.Timer { Interval = 350 };
-        timer.Tick += (_, _) => { timer.Stop(); timer.Dispose(); _pulse = null; Invalidate(); };
-        timer.Start();
+        _pulseTimer.Stop();
+        _pulseTimer.Start();
     }
 
     private Rectangle Cell(int index) => new(8, BrandHeight + 6 + index * 46, Width - 16, 42);
@@ -142,7 +154,7 @@ public sealed class SideRail : Control
         using (var body = Rounded(bodyRect, 4))
         {
             using (var paperBrush = new SolidBrush(paper)) g.FillPath(paperBrush, body);
-            var keep = g.Clip;
+            using var keep = g.Clip;
             g.SetClip(body, System.Drawing.Drawing2D.CombineMode.Intersect);
             // the page area: the next sheet is under the one that turns
             var pageArea = new RectangleF(7, 14, 22, 16);
@@ -244,7 +256,7 @@ public sealed class SideRail : Control
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { WaveClock.Unsubscribe(_tick); _tip.Dispose(); }
+        if (disposing) { WaveClock.Unsubscribe(_tick); _pulseTimer.Dispose(); _tip.Dispose(); }
         base.Dispose(disposing);
     }
 }
