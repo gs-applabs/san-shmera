@@ -41,7 +41,9 @@ public sealed class TimeToolsTests
         Assert.InRange(Math.Abs((eclipse.Utc - new DateTime(2024,4,8,18,17,15,DateTimeKind.Utc)).TotalMinutes),0,4);
         var moon = Assert.Single(events.Where(e => e.Kind == "moon-0" && e.Utc.Month == 4));
         Assert.InRange(Math.Abs((moon.Utc - new DateTime(2024,4,8,18,21,0,DateTimeKind.Utc)).TotalMinutes),0,4);
-        Assert.InRange(events.Count,50,70);
+        Assert.InRange(events.Count,65,110);
+        Assert.Contains(events, e => e.Kind == "opposition" && e.Detail == "Jupiter");
+        Assert.Contains(events, e => e.Kind == "inferior-conjunction" && e.Detail == "Mercury");
         Assert.Equal(events.OrderBy(e=>e.Utc).ToArray(),events.ToArray());
     }
 
