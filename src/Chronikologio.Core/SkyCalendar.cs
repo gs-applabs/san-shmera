@@ -48,6 +48,42 @@ public static class SkyCalendar
             Astronomy.MoonPhase(noon), Astronomy.Illumination(Body.Moon, noon).phase_fraction,
             sunrise.HasValue && sunset.HasValue && sunset >= sunrise ? sunset - sunrise : null);
     }
+    public sealed record SolarContact(DateTime Utc, double AltitudeDegrees);
+    public sealed record LocalSolar(string Kind, double ObscuredFraction, SolarContact Begin, SolarContact Peak, SolarContact End);
+    public sealed record LunarPeak(DateTime Utc, double MoonAltitudeDegrees);
+    /// <summary>Local geometric eclipse circumstances, not a weather or terrain visibility forecast.
+    /// Year selection is based on the local maximum expressed in UTC, like ForYear.</summary>
+    public static IReadOnlyList<LocalSolar> LocalSolarForYear(int year, Site site, CancellationToken ct = default)
+    {
+        Validate(year);
+        ct.ThrowIfCancellationRequested();
+        var start = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var end = start.AddYears(1);
+        var observer = new Observer(site.Latitude, site.Longitude, 0);
+        var results = new List<LocalSolar>();
+        foreach (var e in Astronomy.LocalSolarEclipsesAfter(Time(start.AddDays(-1)), observer))
+        {
+            ct.ThrowIfCancellationRequested();
+            var peak = e.peak.time.ToUtcDateTime();
+            if (peak >= end) break;
+            if (peak < start) continue;
+            SolarContact Contact(EclipseEvent x) => new(x.time.ToUtcDateTime(), x.altitude);
+            results.Add(new(e.kind.ToString(), e.obscuration, Contact(e.partial_begin), Contact(e.peak), Contact(e.partial_end)));
+        }
+        return results.AsReadOnly();
+    }
+
+    /// <summary>Altitude of the Moon at the global lunar eclipse maximum only.
+    /// A negative altitude does not imply the entire eclipse is invisible.</summary>
+    public static LunarPeak LunarPeakAt(DateTime utc, Site site)
+    {
+        var observer = new Observer(site.Latitude, site.Longitude, 0);
+        var t = Time(DateTime.SpecifyKind(utc, DateTimeKind.Utc));
+        var eq = Astronomy.Equator(Body.Moon, t, observer, EquatorEpoch.OfDate, Aberration.Corrected);
+        var horizon = Astronomy.Horizon(t, observer, eq.ra, eq.dec, Refraction.Normal);
+        return new(utc, horizon.altitude);
+    }
+
     public static IReadOnlyList<Event> ForYear(int year, CancellationToken ct = default)
     {
         Validate(year);
