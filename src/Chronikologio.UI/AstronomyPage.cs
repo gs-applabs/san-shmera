@@ -8,6 +8,7 @@ public sealed class AstronomyPage : TimeToolsPage
     private readonly DateTimePicker _date;
     private readonly FlatComboBox _site = new() { Width = 180, Height = 32 };
     private readonly ListView _daily, _annual;
+    private readonly MoonPhaseVisual _moon = new() { Height = 96, Width = 100, Tag = "card" };
     private readonly Label _status = new() { TextAlign = ContentAlignment.MiddleLeft, Tag = "muted" };
     private readonly FlatButton _calculate;
     private CancellationTokenSource? _work;
@@ -27,6 +28,7 @@ public sealed class AstronomyPage : TimeToolsPage
         _site.SetItems(SkyCalendar.Sites.Select(s => SiteName(s.Id)), Math.Max(0, SkyCalendar.Sites.ToList().FindIndex(s => s.Id == siteId)));
         Add(Row(Field(T("Ημερομηνία", "Date")), _date, Field(T("Τόπος", "Site"), 55), _site), 50);
         _daily = Table((T("Ημερήσιο φαινόμενο", "Daily event"), 290), (T("Τοπική ώρα / τιμή", "Local time / value"), 280));
+        Add(_moon, 96);
         Add(_daily, 204);
         _calculate = Button(T("Υπολογισμός έτους", "Calculate year"), 185);
         Add(Row(_calculate, _status), 48);
@@ -53,6 +55,7 @@ public sealed class AstronomyPage : TimeToolsPage
         {
             var day = SkyCalendar.ForDay(DateOnly.FromDateTime(_date.Value), site);
             string Format(DateTime? t) => t is null ? T("Δεν συμβαίνει σήμερα", "No event today") : SkyCalendar.Local(t.Value, site).ToString("HH:mm");
+            _moon.SetPhase(day.MoonPhaseDegrees, day.IlluminatedFraction);
             Rows(_daily, new[]
             {
                 new[] { T("Ανατολή Ηλίου", "Sunrise"), Format(day.SunriseUtc) },
