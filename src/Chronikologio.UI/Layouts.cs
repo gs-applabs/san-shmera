@@ -11,12 +11,10 @@ public static class DayImages
     {
         foreach (var candidate in day.SaintImages)
         {
-            var path = store.ImagePath(candidate);
-            if (path is null) continue;
             try
             {
                 image = candidate;
-                return ImageLoader.Load(path);
+                return ImageLoader.Load(store, candidate);
             }
             catch (Exception ex) when (ex is ArgumentException or OutOfMemoryException or IOException) { }
         }
