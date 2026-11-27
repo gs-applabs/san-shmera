@@ -1,0 +1,72 @@
+name: Product snapshots
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/product-snapshots.yml']
+permissions:
+  contents: write
+concurrency:
+  group: product-snapshots
+  cancel-in-progress: false
+jobs:
+  capture:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '11.0.x'
+      - name: Render calendar and detail panels
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:CHRON_RENDER_DIR = Join-Path $env:RUNNER_TEMP 'product-snapshots'
+          dotnet test tests/Chronikologio.Plugin.Tests/Chronikologio.Plugin.Tests.csproj -c Release --filter FullyQualifiedName~RenderPreviewTests
+          if ($LASTEXITCODE -ne 0) { throw 'Render tests failed' }
+      - name: Validate and publish gallery
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $src = Join-Path $env:RUNNER_TEMP 'product-snapshots'
+          $files = @(Get-ChildItem $src -Recurse -File -Filter '*.png')
+          if ($files.Count -lt 14) { throw "Too few screenshots: $($files.Count)" }
+          Add-Type -AssemblyName System.Drawing
+          foreach ($file in $files) {
+            $image = [Drawing.Image]::FromFile($file.FullName)
+            try { if ($image.Width -lt 32 -or $image.Height -lt 32) { throw "Invalid image: $($file.Name)" } } finally { $image.Dispose() }
+          }
+          $dest = 'docs/product-snapshots'
+          if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
+          New-Item -ItemType Directory -Force $dest | Out-Null
+          $lines = @('# Application screenshots / Στιγμιότυπα εφαρμογής', '', "Source commit: $env:GITHUB_SHA", '', 'Actual WinForms calendar, detail and main-window renderings with representative dates and both themes; not a live desktop capture.', '')
+          foreach ($file in ($files | Sort-Object FullName)) {
+            $relative = [IO.Path]::GetRelativePath($src, $file.FullName).Replace('\','/')
+            $target = Join-Path $dest $relative
+            New-Item -ItemType Directory -Force (Split-Path $target) | Out-Null
+            Copy-Item $file.FullName $target
+            $lines += @("### $relative", '', "![$relative]($relative)", '')
+          }
+          $lines | Set-Content "$dest/README.md" -Encoding utf8
+          $readme = Get-Content README.md -Raw
+          if (!$readme.Contains('docs/product-snapshots/README.md')) {
+            $readme += "`n`n## Current screenshot gallery / Νέα στιγμιότυπα`n`n[Browse application screenshots / Προβολή στιγμιοτύπων](docs/product-snapshots/README.md)`n"
+            Set-Content README.md $readme -Encoding utf8
+          }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- docs/product-snapshots README.md
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) { exit 0 }
+          git commit -m 'docs: refresh application screenshots'
+          if ($LASTEXITCODE -ne 0) { throw 'Commit failed' }
+          git push origin HEAD:main
+          if ($LASTEXITCODE -ne 0) { throw 'Push rejected; no forced update' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: product-snapshots
+          path: ${{ runner.temp }}/product-snapshots/**/*.png
+          if-no-files-found: warn
