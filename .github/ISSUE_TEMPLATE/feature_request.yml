@@ -1,0 +1,20 @@
+name: Feature request / Πρόταση λειτουργίας
+description: Suggest an improvement and explain the benefit.
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem should this solve? / Ποιο πρόβλημα λύνει;
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed experience / Προτεινόμενη λειτουργία
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or examples / Εναλλακτικές ή παραδείγματα

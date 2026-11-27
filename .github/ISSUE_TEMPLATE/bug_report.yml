@@ -1,0 +1,35 @@
+name: Bug report / Αναφορά σφάλματος
+description: Help reproduce a problem in the application.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: Do not include passwords, API keys, personal data or confidential files. / Μην συμπεριλαμβάνεις κωδικούς, API keys ή προσωπικά δεδομένα.
+  - type: input
+    id: version
+    attributes:
+      label: Application version / Έκδοση εφαρμογής
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Windows version, architecture and relevant runtime
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce / Βήματα αναπαραγωγής
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior / Αναμενόμενο και πραγματικό αποτέλεσμα
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Redacted screenshots or logs / Ανωνυμοποιημένα στιγμιότυπα ή logs
