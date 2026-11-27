@@ -31,6 +31,8 @@ jobs:
         run: dotnet test tests/Chronikologio.Core.Tests --nologo
 
       - name: Plugin and WinForms tests
+        env:
+          CHRON_METRICS_DIR: ${{ github.workspace }}/audit-metrics
         run: dotnet test tests/Chronikologio.Plugin.Tests -c Release --nologo
 
       - name: Publish desktop app
@@ -43,6 +45,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $exe = Join-Path (Resolve-Path smoke-app) 'Chronikologio.exe'
+          Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class ChronWindow { [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hwnd, int command); [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hwnd); }'
           $p = Start-Process $exe -PassThru
           try {
             $sw = [Diagnostics.Stopwatch]::StartNew()
@@ -53,13 +56,29 @@ jobs:
             } until ($p.MainWindowHandle -ne 0 -or $sw.Elapsed.TotalSeconds -ge 20)
             if ($p.MainWindowHandle -eq 0) { throw 'No main window appeared' }
             $startup = $sw.ElapsedMilliseconds
-            $p.Refresh(); $cpu = $p.TotalProcessorTime.TotalMilliseconds
-            $sample = [Diagnostics.Stopwatch]::StartNew()
-            Start-Sleep -Seconds 5
-            $p.Refresh()
-            if ($p.HasExited -or !$p.Responding) { throw 'Main window not responsive' }
-            $result = [ordered]@{ startupMs = $startup; workingSetBytes = $p.WorkingSet64; privateBytes = $p.PrivateMemorySize64; handles = $p.HandleCount; threads = $p.Threads.Count; cpuMs = ($p.TotalProcessorTime.TotalMilliseconds - $cpu); sampleMs = $sample.ElapsedMilliseconds }
-            $result | ConvertTo-Json | Tee-Object -FilePath smoke-metrics.json
+            function Sample-Resources {
+              $p.Refresh()
+              $cpu = $p.TotalProcessorTime.TotalMilliseconds
+              $sample = [Diagnostics.Stopwatch]::StartNew()
+              Start-Sleep -Seconds 8
+              $p.Refresh()
+              if ($p.HasExited -or !$p.Responding) { throw 'Main window not responsive' }
+              $cpuDelta = $p.TotalProcessorTime.TotalMilliseconds - $cpu
+              $elapsed = $sample.ElapsedMilliseconds
+              [ordered]@{ workingSetBytes = $p.WorkingSet64; privateBytes = $p.PrivateMemorySize64; handles = $p.HandleCount; threads = $p.Threads.Count; cpuMs = $cpuDelta; sampleMs = $elapsed; cpuPercentOneCore = (100 * $cpuDelta / $elapsed); cpuPercentMachine = (100 * $cpuDelta / $elapsed / [Environment]::ProcessorCount) }
+            }
+            Start-Sleep -Seconds 3
+            $visible = Sample-Resources
+            $hwnd = $p.MainWindowHandle
+            [void][ChronWindow]::ShowWindowAsync($hwnd, 6)
+            Start-Sleep -Seconds 1
+            if (![ChronWindow]::IsIconic($hwnd)) { throw 'Minimize failed' }
+            $minimized = Sample-Resources
+            [void][ChronWindow]::ShowWindowAsync($hwnd, 9)
+            Start-Sleep -Milliseconds 500
+            if ([ChronWindow]::IsIconic($hwnd)) { throw 'Restore failed' }
+            $result = [ordered]@{ startupMs = $startup; logicalProcessors = [Environment]::ProcessorCount; visible = $visible; minimized = $minimized }
+            $result | ConvertTo-Json -Depth 4 | Tee-Object -FilePath smoke-metrics.json
           } finally {
             if (!$p.HasExited) { [void]$p.CloseMainWindow(); if (!$p.WaitForExit(5000)) { $p.Kill(); throw 'Desktop app failed to close gracefully' } }
             $p.Dispose()
@@ -68,7 +87,9 @@ jobs:
         if: always()
         with:
           name: chronikologio-smoke-metrics
-          path: smoke-metrics.json
+          path: |
+            smoke-metrics.json
+            audit-metrics/*.json
           if-no-files-found: warn
 
       - name: Vulnerable packages
