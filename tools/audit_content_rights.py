@@ -34,14 +34,14 @@ def audit(root):
         licenses[license_ or "(missing)"] += 1
         hosts[host or "(missing)"] += 1
         declarations[key].append((where, creator, license_, url))
+        evidence = {"where": where, "file": key, "creator": creator, "declaredLicense": license_, "sourceUrl": url}
         if not creator or not PERMITTED_LABEL.fullmatch(license_) or not valid_url:
-            issues.append({"where": where, "file": key, "reason": "unrecognized-or-incomplete-rights-metadata"})
+            issues.append({**evidence, "reason": "unrecognized-or-incomplete-rights-metadata"})
         if creator.lower().startswith(("unknown", "anonymous", "άγνωστ")):
-            issues.append({"where": where, "file": key, "reason": "creator-unknown-needs-review"})
+            issues.append({**evidence, "reason": "creator-unknown-needs-review"})
         if host not in {"commons.wikimedia.org", "images.nasa.gov", "www.nasa.gov", "nasa.gov", "history.nasa.gov"}:
-            issues.append({"where": where, "file": key, "reason": "source-host-needs-review"})
+            issues.append({**evidence, "reason": "source-host-needs-review"})
 
-    tsv_paths_before_json = set()
     for p in sorted(images.rglob("*.tsv")):
         expected = next((v for k, v in FORMATS.items() if p.name.startswith(k)), None)
         if expected is None:
@@ -78,7 +78,7 @@ def audit(root):
         issues.append({"file": key, "reason": "declared-file-not-found"})
     for key, refs in sorted(declarations.items()):
         if len({(creator, license_, url) for _, creator, license_, url in refs}) > 1:
-            issues.append({"file": key, "reason": "conflicting-rights-declarations"})
+            issues.append({"file": key, "reason": "conflicting-rights-declarations", "declarations": [{"where": w, "creator": c, "declaredLicense": l, "sourceUrl": u} for w,c,l,u in refs]})
     for p in sorted((root / "saints").glob("saints-syn-*.tsv")):
         for line in p.read_text(encoding="utf-8-sig").splitlines():
             if not line.strip() or line.startswith("#"):
@@ -95,6 +95,13 @@ def audit(root):
         "declaredLicenseCounts": dict(sorted(licenses.items())),
         "declaredSourceHosts": dict(sorted(hosts.items())),
         "saintsSynaxarionRowsRequiringDatasetRightsReview": saint_rows,
+        "datasetRightsReview": [{
+            "source": "https://www.synaxarion.gr/",
+            "scope": "saints-syn-*.tsv",
+            "status": "permission-not-established",
+            "reviewed": "2026-11-27",
+            "note": "The publisher describes its own permission for reproducing church publications; no general redistribution grant for this application was established. Check database rights separately from individual date/name facts."
+        }],
         "saintRowsWithExplicitUnwrittenLife": saint_placeholders,
         "issueCounts": dict(sorted(Counter(i["reason"] for i in issues).items())),
         "issues": issues,
@@ -102,7 +109,8 @@ def audit(root):
             "No external rights pages were fetched or independently verified.",
             "A declared license is not proof of permission, jurisdictional public domain or image relevance.",
             "TSV and JSON declarations are inventoried; other manifests may require separate review.",
-            "Source facts, selection/database rights, captions and original summaries need independent review."
+            "Source facts, selection/database rights, captions and original summaries need independent review.",
+            "Unknown author alone does not establish infringement; verify original work date, jurisdiction and rights basis."
         ]
     }
 
