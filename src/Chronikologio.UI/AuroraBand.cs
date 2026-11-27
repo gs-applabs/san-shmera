@@ -9,6 +9,7 @@ public static class WaveClock
 {
     private static readonly System.Windows.Forms.Timer Timer = new() { Interval = 33 };   // about 30 pictures a second: the lines move smoothly
     private static readonly Dictionary<Action, Control> Listeners = new();
+    private static KeyValuePair<Action, Control>[] _snapshot = Array.Empty<KeyValuePair<Action, Control>>();
 
     private static readonly System.Diagnostics.Stopwatch Clock = System.Diagnostics.Stopwatch.StartNew();
 
@@ -20,13 +21,13 @@ public static class WaveClock
         Timer.Tick += (_, _) =>
         {
             var active = false;
-            foreach (var (handler, control) in Listeners.ToArray())
+            foreach (var (handler, control) in _snapshot)
             {
                 if (!ShouldDraw(control)) continue;
                 active = true;
                 handler();
             }
-            var interval = active ? 33 : 250;
+            var interval = active ? (Form.ActiveForm is null ? 100 : 33) : 250;
             if (Timer.Interval != interval) Timer.Interval = interval;
         };
     }
@@ -34,12 +35,14 @@ public static class WaveClock
     public static void Subscribe(Control control, Action handler)
     {
         Listeners[handler] = control;
+        _snapshot = Listeners.ToArray();
         if (Listeners.Count == 1) { Timer.Interval = 33; Timer.Start(); }
     }
 
     public static void Unsubscribe(Action handler)
     {
         Listeners.Remove(handler);
+        _snapshot = Listeners.ToArray();
         if (Listeners.Count == 0) Timer.Stop();
     }
 
