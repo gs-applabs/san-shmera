@@ -82,21 +82,15 @@ public sealed class DayStore
         if (!TraditionsOf.ContainsKey(region)) region = "gr";
         var store = new DayStore { DataRoot = dataRoot, Region = region };
         var errors = new List<string>();
-        // Enumerate once instead of traversing the entire data tree twice.
-        // Keep support for legacy text files anywhere in the data tree, including images.
-        var dataFiles = Directory.Exists(dataRoot)
-            ? Directory.EnumerateFiles(dataRoot, "*", SearchOption.AllDirectories)
-                .Where(p => Path.GetExtension(p).Equals(".json", StringComparison.OrdinalIgnoreCase)
-                         || Path.GetExtension(p).Equals(".tsv", StringComparison.OrdinalIgnoreCase))
-                .Order(StringComparer.Ordinal).ToArray()
-            : Array.Empty<string>();
+        using var source = new TextLibrary(dataRoot);
+        var dataFiles = source.Files;
         if (Directory.Exists(dataRoot))
         {
             foreach (var file in dataFiles.Where(p => Path.GetExtension(p).Equals(".json", StringComparison.OrdinalIgnoreCase)))
             {
                 try
                 {
-                    var mf = JsonSerializer.Deserialize<MonthFile>(File.ReadAllText(file), Json);
+                    var mf = JsonSerializer.Deserialize<MonthFile>(source.ReadText(file), Json);
                     if (mf is null) { errors.Add($"{file}: empty"); continue; }
                     store.Add(mf);
                 }
@@ -117,18 +111,18 @@ public sealed class DayStore
                     if (name.Equals(EntryIds.RegistryFile, StringComparison.Ordinal)) continue;   // read by ApplyIds
                     // the saints of the Megas Synaxaristis of the Church of Greece belong to the Greek calendar only
                     if (name.StartsWith("saints-syn", StringComparison.Ordinal) && region != "gr") continue;
-                    if (name.StartsWith("en-", StringComparison.Ordinal)) store.AddEnglish(file, errors);
-                    else if (name.StartsWith("lives", StringComparison.Ordinal)) store.AddLives(file, errors);
-                    else if (name.StartsWith("analysis", StringComparison.Ordinal)) store.AddAnalysis(file, errors);
-                    else if (name.StartsWith("bios", StringComparison.Ordinal)) store.AddBios(file, errors);
-                    else if (name.StartsWith("saints", StringComparison.Ordinal)) store.AddSaints(file, errors);
-                    else if (name.StartsWith("events", StringComparison.Ordinal)) store.AddEvents(file, errors);
-                    else if (name.StartsWith("verification", StringComparison.Ordinal)) store.AddChecks(file, errors);
-                    else if (name.StartsWith("eventimages", StringComparison.Ordinal)) store.AddEventImages(file, errors);
-                    else if (name.StartsWith("saintimages", StringComparison.Ordinal)) store.AddSaintImages(file, errors);
-                    else if (name.StartsWith("personimages", StringComparison.Ordinal)) store.AddPersonImages(file, errors);
-                    else if (name.StartsWith("deaths", StringComparison.Ordinal)) store.AddBirths(file, errors, store._deaths, "deaths");
-                    else store.AddBirths(file, errors, store._births, "births");
+                    if (name.StartsWith("en-", StringComparison.Ordinal)) store.AddEnglish(source, file, errors);
+                    else if (name.StartsWith("lives", StringComparison.Ordinal)) store.AddLives(source, file, errors);
+                    else if (name.StartsWith("analysis", StringComparison.Ordinal)) store.AddAnalysis(source, file, errors);
+                    else if (name.StartsWith("bios", StringComparison.Ordinal)) store.AddBios(source, file, errors);
+                    else if (name.StartsWith("saints", StringComparison.Ordinal)) store.AddSaints(source, file, errors);
+                    else if (name.StartsWith("events", StringComparison.Ordinal)) store.AddEvents(source, file, errors);
+                    else if (name.StartsWith("verification", StringComparison.Ordinal)) store.AddChecks(source, file, errors);
+                    else if (name.StartsWith("eventimages", StringComparison.Ordinal)) store.AddEventImages(source, file, errors);
+                    else if (name.StartsWith("saintimages", StringComparison.Ordinal)) store.AddSaintImages(source, file, errors);
+                    else if (name.StartsWith("personimages", StringComparison.Ordinal)) store.AddPersonImages(source, file, errors);
+                    else if (name.StartsWith("deaths", StringComparison.Ordinal)) store.AddBirths(source, file, errors, store._deaths, "deaths");
+                    else store.AddBirths(source, file, errors, store._births, "births");
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { errors.Add($"{file}: {ex.Message}"); }
             }
@@ -137,7 +131,7 @@ public sealed class DayStore
         store.ApplyAnalysis();
         store.ApplyBios();
         store.RemoveRepeatedEvents();
-        store.ApplyIds(dataRoot);
+        store.ApplyIds(source);
         store.ApplyChecks();
         store.ApplyEventImages();
         store.ApplySaintImages();
@@ -210,10 +204,10 @@ public sealed class DayStore
     /// Reads the saints files (saints*.tsv): one line per commemoration, "MM-DD|title|summary|names";
     /// names are separated by ";" and each is "Name~variant,variant~origin~meaning". A bad line is reported and skipped.
     /// </summary>
-    private void AddSaints(string file, List<string> errors)
+    private void AddSaints(TextLibrary source, string file, List<string> errors)
     {
         var number = 0;
-        foreach (var line in File.ReadLines(file))
+        foreach (var line in source.ReadLines(file))
         {
             number++;
             if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#')) continue;
@@ -275,10 +269,10 @@ public sealed class DayStore
     private readonly Dictionary<string, string> _enAnalysis = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _enBios = new(StringComparer.Ordinal);
 
-    private void AddEnglish(string file, List<string> errors)
+    private void AddEnglish(TextLibrary source, string file, List<string> errors)
     {
         var number = 0;
-        foreach (var line in File.ReadLines(file))
+        foreach (var line in source.ReadLines(file))
         {
             number++;
             if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#')) continue;
@@ -334,10 +328,10 @@ public sealed class DayStore
     /// Reads the lives of the saints (lives*.tsv): "MM-DD|title|life", the title being the beginning of the title of the commemoration. The life is written from scratch and
     /// is shown in the details of the commemoration (the summary stays the short text). A bad line is reported and skipped.
     /// </summary>
-    private void AddLives(string file, List<string> errors)
+    private void AddLives(TextLibrary source, string file, List<string> errors)
     {
         var number = 0;
-        foreach (var line in File.ReadLines(file))
+        foreach (var line in source.ReadLines(file))
         {
             number++;
             if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#')) continue;
@@ -358,10 +352,10 @@ public sealed class DayStore
     /// Reads the analyses of the historical events (analysis*.tsv): "MM-DD|year|exact title of the event|analysis", paragraphs separated by " // ". The analysis is written from
     /// scratch and is shown in the full text of the event; the summary stays the short text. A bad line is reported and skipped.
     /// </summary>
-    private void AddAnalysis(string file, List<string> errors)
+    private void AddAnalysis(TextLibrary source, string file, List<string> errors)
     {
         var number = 0;
-        foreach (var line in File.ReadLines(file))
+        foreach (var line in source.ReadLines(file))
         {
             number++;
             if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#')) continue;
@@ -384,10 +378,10 @@ public sealed class DayStore
     /// Reads the short biographies of the people (bios*.tsv): "MM-DD|b or d|year|name|text", b for a birth and d for a death, the name being the one of the births or deaths file.
     /// Paragraphs are separated by " // ". The text is written from scratch and is shown in the full text of the person. A bad line is reported and skipped.
     /// </summary>
-    private void AddBios(string file, List<string> errors)
+    private void AddBios(TextLibrary source, string file, List<string> errors)
     {
         var number = 0;
-        foreach (var line in File.ReadLines(file))
+        foreach (var line in source.ReadLines(file))
         {
             number++;
             if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#')) continue;
@@ -440,10 +434,10 @@ public sealed class DayStore
     /// Reads the photographs of events (eventimages*.tsv): "MM-DD|year|title|file|caption|creator|license|sourceUrl". The file is relative to data/images.
     /// Only images with a licence that allows reuse are listed (the tools check the licence); the creator, licence and source page are shown with the image.
     /// </summary>
-    private void AddEventImages(string file, List<string> errors)
+    private void AddEventImages(TextLibrary source, string file, List<string> errors)
     {
         var number = 0;
-        foreach (var line in File.ReadLines(file))
+        foreach (var line in source.ReadLines(file))
         {
             number++;
             if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#')) continue;
@@ -464,10 +458,10 @@ public sealed class DayStore
     private readonly List<(int Month, int Day, string Title, ImageRef Image)> _saintImages = new();
 
     /// <summary>Reads the icons of the saints (saintimages*.tsv): "MM-DD|beginning of the title|file|caption|creator|license|sourceUrl".</summary>
-    private void AddSaintImages(string file, List<string> errors)
+    private void AddSaintImages(TextLibrary source, string file, List<string> errors)
     {
         var number = 0;
-        foreach (var line in File.ReadLines(file))
+        foreach (var line in source.ReadLines(file))
         {
             number++;
             if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#')) continue;
@@ -485,10 +479,10 @@ public sealed class DayStore
     private readonly List<(int Month, int Day, bool Death, int Year, string Name, ImageRef Image)> _personImages = new();
 
     /// <summary>Reads the portraits (personimages*.tsv): "MM-DD|b or d|year|name|file|caption|creator|license|sourceUrl".</summary>
-    private void AddPersonImages(string file, List<string> errors)
+    private void AddPersonImages(TextLibrary source, string file, List<string> errors)
     {
         var number = 0;
-        foreach (var line in File.ReadLines(file))
+        foreach (var line in source.ReadLines(file))
         {
             number++;
             if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#')) continue;
@@ -555,10 +549,10 @@ public sealed class DayStore
     /// status = Reviewed or Verified. Each line raises the status of the record with that date (and year) and title and adds the checking source to it.
     /// A Verified line must carry a URL.
     /// </summary>
-    private void AddChecks(string file, List<string> errors)
+    private void AddChecks(TextLibrary source, string file, List<string> errors)
     {
         var number = 0;
-        foreach (var line in File.ReadLines(file))
+        foreach (var line in source.ReadLines(file))
         {
             number++;
             if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#')) continue;
@@ -613,10 +607,10 @@ public sealed class DayStore
     };
 
     /// <summary>Reads the events files (events*.tsv): "MM-DD|year|region|title|summary"; the year may be empty for an annual observance (negative = BC).</summary>
-    private void AddEvents(string file, List<string> errors)
+    private void AddEvents(TextLibrary source, string file, List<string> errors)
     {
         var number = 0;
-        foreach (var line in File.ReadLines(file))
+        foreach (var line in source.ReadLines(file))
         {
             number++;
             if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#')) continue;
@@ -643,10 +637,10 @@ public sealed class DayStore
     /// </summary>
     private readonly Dictionary<(int Month, int Day), List<Person>> _deaths = new();
 
-    private void AddBirths(string file, List<string> errors, Dictionary<(int Month, int Day), List<Person>> target, string kind)
+    private void AddBirths(TextLibrary source, string file, List<string> errors, Dictionary<(int Month, int Day), List<Person>> target, string kind)
     {
         var number = 0;
-        foreach (var line in File.ReadLines(file))
+        foreach (var line in source.ReadLines(file))
         {
             number++;
             if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#')) continue;
@@ -682,9 +676,9 @@ public sealed class DayStore
     }
 
     /// <summary>Gives every entry its stable identifier: the one of the registry file, or the one made from its content when it is not registered yet.</summary>
-    private void ApplyIds(string dataRoot)
+    private void ApplyIds(TextLibrary source)
     {
-        var registry = EntryIds.LoadRegistry(dataRoot);
+        var registry = EntryIds.LoadRegistry(source);
         string Id(string kind, int month, int day, int? year, string title) =>
             registry.TryGetValue(EntryIds.Key(kind, month, day, year, title), out var id) ? id : EntryIds.Make(kind, month, day, year, title);
         foreach (var ((month, day), slot) in _days)
