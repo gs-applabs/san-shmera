@@ -14,7 +14,7 @@ public static class DayImages
             try
             {
                 image = candidate;
-                return ImageLoader.Load(store, candidate);
+                return ImageLoader.LoadFromStore(store, candidate);
             }
             catch (Exception ex) when (ex is ArgumentException or OutOfMemoryException or IOException) { }
         }
