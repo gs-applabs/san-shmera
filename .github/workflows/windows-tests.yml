@@ -13,6 +13,10 @@ env:
 permissions:
   contents: read
 
+concurrency:
+  group: chron-windows-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   core-tests:
     runs-on: windows-latest
@@ -30,9 +34,11 @@ jobs:
         run: dotnet test tests/Chronikologio.Plugin.Tests -c Release --nologo
 
       - name: Publish desktop app
+        if: ${{ !cancelled() }}
         run: dotnet publish src/Chronikologio.Windows -c Release -o smoke-app --nologo
 
       - name: Launch desktop app and sample resources
+        if: ${{ !cancelled() }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -66,6 +72,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Vulnerable packages
+        if: ${{ !cancelled() }}
         shell: pwsh
         run: |
           foreach ($project in @('src/Chronikologio.Windows', 'src/Chronikologio.OpsisPlugin')) {
