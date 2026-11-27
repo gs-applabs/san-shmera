@@ -480,11 +480,9 @@ public sealed class DayOverviewLayout : DayLayout
         _heroText.Text = Cut(string.IsNullOrWhiteSpace(main.Details) ? main.Summary : main.Summary, 260);
         foreach (var candidate in day.SaintImages)
         {
-            var path = Store.ImagePath(candidate);
-            if (path is null) continue;
             try
             {
-                _heroImage = ImageLoader.Load(path);
+                _heroImage = ImageLoader.Load(Store, candidate);
                 _heroInfo = candidate;
                 var h = 136;
                 _heroPhoto.Width = Math.Min(170, (int)Math.Round(_heroImage.Width * (h / (double)_heroImage.Height))) + _heroPhoto.InsetRight;
@@ -558,9 +556,7 @@ public sealed class DayOverviewLayout : DayLayout
     {
         foreach (var candidate in images ?? Array.Empty<ImageRef>())
         {
-            var path = Store.ImagePath(candidate);
-            if (path is null) continue;
-            try { return (ImageLoader.Load(path), candidate, path); }
+            try { return (ImageLoader.Load(Store, candidate), candidate, candidate.File); }
             catch (Exception ex) when (ex is ArgumentException or OutOfMemoryException or IOException) { }
         }
         return (null, null, null);
@@ -571,9 +567,7 @@ public sealed class DayOverviewLayout : DayLayout
         Image? image = null; ImageRef? info = null; string? path = null;
         foreach (var candidate in e.Images ?? Array.Empty<ImageRef>())
         {
-            path = Store.ImagePath(candidate);
-            if (path is null) continue;
-            try { image = ImageLoader.Load(path); info = candidate; break; }
+            try { image = ImageLoader.Load(Store, candidate); info = candidate; path = candidate.File; break; }
             catch (Exception ex) when (ex is ArgumentException or OutOfMemoryException or IOException) { path = null; }
         }
         var link = e.Sources.FirstOrDefault(s => Uri.TryCreate(s.Url, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp));
