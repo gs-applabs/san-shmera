@@ -43,6 +43,17 @@ jobs:
         if: ${{ !cancelled() }}
         run: dotnet publish src/Chronikologio.Windows -c Release -o smoke-app --nologo
 
+      - name: Build and verify packed media in disposable publish folder
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          python tools/pack_media.py smoke-app/data --remove-loose | Tee-Object -FilePath audit-metrics/media-pack.json
+          if ($LASTEXITCODE -ne 0) { throw 'Media packing failed' }
+          $env:CHRON_PACKED_DATA = (Resolve-Path smoke-app/data).Path
+          $env:CHRON_SOURCE_DATA = (Resolve-Path data).Path
+          dotnet test tests/Chronikologio.Core.Tests --nologo --filter FullyQualifiedName~PackedMediaTests
+          if ($LASTEXITCODE -ne 0) { throw 'Packed media integrity test failed' }
+
       - name: Launch desktop app and sample resources
         if: ${{ !cancelled() }}
         shell: pwsh
