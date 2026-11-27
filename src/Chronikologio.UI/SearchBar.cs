@@ -31,7 +31,9 @@ public sealed class SearchBar : Panel
     private readonly ListBox _list = new() { Visible = false, BorderStyle = BorderStyle.FixedSingle, IntegralHeight = false, DrawMode = DrawMode.OwnerDrawFixed, ItemHeight = 28, TabStop = false };
     private readonly System.Windows.Forms.Timer _hide = new() { Interval = 180 };
     private DayStore? _store;
-    private List<Entry>? _index;
+    private Entry[][]? _index;
+    private static readonly string[] Kinds = { "name", "saint", "event" };
+    private static readonly int[] Limits = { 6, 6, 4 };
     private readonly List<Entry> _shown = new();
 
     /// <summary>Raised when a result is chosen: the day to go to (in the current year).</summary>
@@ -144,9 +146,9 @@ public sealed class SearchBar : Panel
         _list.Invalidate();
     }
 
-    private List<Entry> Index()
+    private Entry[][] Index()
     {
-        if (_index is not null || _store is null) return _index ?? new List<Entry>();
+        if (_index is not null || _store is null) return _index ?? Array.Empty<Entry[]>();
         var list = new List<Entry>();
         for (var i = 0; i < 366; i++)
         {
@@ -162,7 +164,8 @@ public sealed class SearchBar : Panel
             foreach (var e in day.Events)
                 list.Add(new Entry(TextNorm.Fold(e.Title), (e.Year is { } y ? y.ToString(CultureInfo.InvariantCulture) + " · " : "") + e.Title, "event", d.Month, d.Day));
         }
-        return _index = list;
+        // Stable priority order is computed once per country/language, not per keystroke.
+        return _index = Kinds.Select(kind => list.Where(e => e.Kind == kind).OrderBy(e => e.Priority).ToArray()).ToArray();
     }
 
     private void Update_()
@@ -171,22 +174,31 @@ public sealed class SearchBar : Panel
         _shown.Clear();
         _list.Items.Clear();
         if (q.Length < 2) { _list.Visible = false; return; }
-        var hits = Index().Where(e => e.Folded.Contains(q, StringComparison.Ordinal))
-            .OrderBy(e => e.Kind == "name" ? 0 : e.Kind == "saint" ? 1 : 2)
-            .ThenBy(e => e.Folded.StartsWith(q, StringComparison.Ordinal) ? 0 : 1)
-            .ThenBy(e => e.Priority)
-            .DistinctBy(e => (e.Text, e.Month, e.Day)).ToList();
-        // a few of each kind, so that a name celebrated on many days does not push the saints and the events out of the list
-        hits = hits.Where(e => e.Kind == "name").Take(6).Concat(hits.Where(e => e.Kind == "saint").Take(6)).Concat(hits.Where(e => e.Kind == "event").Take(4)).ToList();
-        if (hits.Count == 0)
+        var groups = Index();
+        // Keep exactly the old ranking (kind, prefix, priority, original order)
+        // and cross-kind duplicate suppression, without sorting/materializing all hits.
+        var seen = new HashSet<(string Text, int Month, int Day)>();
+        for (var k = 0; k < groups.Length; k++)
         {
-            _list.Items.Add(Loc.T("search.none"));
+            var count = 0;
+            for (var pass = 0; pass < 2; pass++)
+            {
+                foreach (var e in groups[k])
+                {
+                    var prefix = e.Folded.StartsWith(q, StringComparison.Ordinal);
+                    if (pass == 0 ? !prefix : prefix || !e.Folded.Contains(q, StringComparison.Ordinal)) continue;
+                    if (!seen.Add((e.Text, e.Month, e.Day))) continue;
+                    if (count < Limits[k]) { _shown.Add(e); count++; }
+                }
+            }
         }
-        else
+        _list.BeginUpdate();
+        try
         {
-            _shown.AddRange(hits);
-            foreach (var h in hits) _list.Items.Add(h.Text);
+            if (_shown.Count == 0) _list.Items.Add(Loc.T("search.none"));
+            else foreach (var hit in _shown) _list.Items.Add(hit.Text);
         }
+        finally { _list.EndUpdate(); }
         var rows = Math.Min(Math.Max(_list.Items.Count, 1), 12);
         _list.Size = new Size(Math.Max(_box.Width, 420), rows * _list.ItemHeight + 4);
         var form = FindForm();
