@@ -1,4 +1,5 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>net$(ChronNet)</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><Version>1.2.1</Version></PropertyGroup>
   <ItemGroup><InternalsVisibleTo Include="Chronikologio.Core.Tests" /></ItemGroup>
+  <ItemGroup><PackageReference Include="CosineKitty.AstronomyEngine" Version="2.1.19" /></ItemGroup>
 </Project>
