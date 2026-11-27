@@ -120,8 +120,12 @@ public sealed class EventTile : Panel
     private string _fullText = "";
 
     /// <summary>Makes the card as wide as given (the cards share the whole width of the window): a wider card has a taller photograph and shows more of the text.</summary>
+    private int _lastFitWidth = -1;
+
     public void FitTo(int width)
     {
+        if (_lastFitWidth == width) return;
+        _lastFitWidth = width;
         Width = width;
         var photoH = _image is null ? 0 : Math.Clamp(width / 2, 110, 230);
         // a portrait is shown whole (never cropped): the box is as tall as the picture needs, up to 320 px, and the picture is scaled to fit it
@@ -170,7 +174,13 @@ public sealed class EventTile : Panel
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { _image?.Dispose(); _tip.Dispose(); }
+        if (disposing)
+        {
+            _photo.Image = null;
+            _image?.Dispose(); _image = null;
+            if (_photo.Parent is null) _photo.Dispose();
+            _tip.Dispose();
+        }
         base.Dispose(disposing);
     }
 }
