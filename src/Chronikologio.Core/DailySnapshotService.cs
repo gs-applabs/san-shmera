@@ -58,7 +58,7 @@ public sealed class DailySnapshotService : IDisposable
             if (_disposed || _started) return;
             _started = true;
         }
-        Rebuild(reload: true);
+        Rebuild(reload: false);
         ScheduleMidnight();
     }
 
@@ -67,11 +67,28 @@ public sealed class DailySnapshotService : IDisposable
     {
         lock (_gate)
         {
-            if (region == _region) return;
+            if (_disposed || region == _region) return;
             _region = region;
             _store = null;
         }
         Rebuild(reload: true);
+    }
+
+    /// <summary>Reuse the store already loaded by the calendar widget, rather than loading it a second time for the feed.</summary>
+    public void UseStore(DayStore store)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        if (!string.Equals(Path.GetFullPath(store.DataRoot), Path.GetFullPath(_dataRoot),
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+            throw new ArgumentException("Store belongs to another data library.", nameof(store));
+        lock (_gate)
+        {
+            if (_disposed) return;
+            if (ReferenceEquals(_store, store)) return;
+            _region = store.Region;
+            _store = store;
+        }
+        Rebuild(reload: false);
     }
 
     /// <summary>The interface language changed: the same data, new texts.</summary>
@@ -80,7 +97,7 @@ public sealed class DailySnapshotService : IDisposable
     /// <summary>Reads the data files again (and makes a new snapshot).</summary>
     public void Refresh()
     {
-        lock (_gate) _store = null;
+        lock (_gate) { if (_disposed) return; _store = null; }
         Rebuild(reload: true);
     }
 
