@@ -111,7 +111,8 @@ public sealed class UpdateChecker
 
     /// <summary>After the redirects the file must come from GitHub or its CDN.</summary>
     public static bool IsTrustedRedirectTarget(Uri? u) =>
-        u is { Scheme: "https" } && (u.Host == "github.com" || u.Host.EndsWith(".githubusercontent.com", StringComparison.Ordinal) || u.Host == "objects.githubusercontent.com");
+        u is { Scheme: "https", IsDefaultPort: true, UserInfo.Length: 0, Fragment.Length: 0 } &&
+        u.Host is "github.com" or "release-assets.githubusercontent.com" or "objects.githubusercontent.com" or "github-releases.githubusercontent.com";
 
     public static bool TryParseTag(string? tag, out Version version)
     {
@@ -216,7 +217,7 @@ public sealed class UpdateInstaller
     public const long MaxInstallerBytes = 700L * 1024 * 1024;   // the installer with the photographs is already close to 400 MB
     private readonly HttpClient _http;
 
-    private static readonly HttpClient SharedHttp = new() { Timeout = TimeSpan.FromMinutes(20) };
+    private static readonly HttpClient SharedHttp = new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromMinutes(20) };
     public UpdateInstaller(HttpClient? http = null) => _http = http ?? SharedHttp;
 
     public static string UpdateFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Chronikologio", "update");
@@ -242,16 +243,49 @@ public sealed class UpdateInstaller
     }
 
     /// <summary>Downloads installer and hash to <paramref name="folder"/>; the installer is kept only if its SHA-256 is the published one. Throws <see cref="UpdateException"/> otherwise.</summary>
+    public sealed record VerifiedDownload(string Path, string Sha256);
+
     public async Task<string> DownloadAsync(UpdateInfo info, string folder, IProgress<int>? progress = null, CancellationToken ct = default)
+        => (await DownloadVerifiedAsync(info, folder, progress, ct).ConfigureAwait(false)).Path;
+
+    private async Task<HttpResponseMessage> GetAssetAsync(string url, string tag, string asset, CancellationToken ct)
+    {
+        var current = new Uri(url);
+        for (int i = 0; i < 6; i++)
+        {
+            if (!UpdateChecker.IsTrustedRedirectTarget(current) ||
+                (current.Host == "github.com" && !UpdateChecker.IsTrustedAssetUrl(current.AbsoluteUri, tag, asset)))
+                throw new UpdateException(UpdateFailure.Untrusted);
+            var response = await _http.GetAsync(current, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+            if ((int)response.StatusCode is 301 or 302 or 303 or 307 or 308)
+            {
+                var location = response.Headers.Location;
+                response.Dispose();
+                if (location is null) throw new UpdateException(UpdateFailure.Untrusted);
+                current = location.IsAbsoluteUri ? location : new Uri(current, location);
+                continue;
+            }
+            if (!UpdateChecker.IsTrustedRedirectTarget(response.RequestMessage?.RequestUri))
+            {
+                response.Dispose();
+                throw new UpdateException(UpdateFailure.Untrusted);
+            }
+            return response;
+        }
+        throw new UpdateException(UpdateFailure.Untrusted, "Too many release redirects.");
+    }
+
+    public async Task<VerifiedDownload> DownloadVerifiedAsync(UpdateInfo info, string folder, IProgress<int>? progress = null, CancellationToken ct = default)
     {
         if (!UpdateChecker.IsTrustedAssetUrl(info.InstallerUrl, info.Tag, UpdateChecker.InstallerName) || !UpdateChecker.IsTrustedAssetUrl(info.HashUrl, info.Tag, UpdateChecker.InstallerName + ".sha256")) throw new UpdateException(UpdateFailure.Untrusted);
         Directory.CreateDirectory(folder);
+        PruneOldDownloads(folder, DateTime.UtcNow);
         // Each download owns its files. Never delete another process's installer or partial download.
 
         string? expected;
         try
         {
-            using var hashResponse = await _http.GetAsync(info.HashUrl, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+            using var hashResponse = await GetAssetAsync(info.HashUrl, info.Tag, UpdateChecker.InstallerName + ".sha256", ct).ConfigureAwait(false);
             if (!hashResponse.IsSuccessStatusCode || !UpdateChecker.IsTrustedRedirectTarget(hashResponse.RequestMessage?.RequestUri)) throw new UpdateException(UpdateFailure.Network);
             var buffer = new byte[4096];
             await using var hs = await hashResponse.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
@@ -276,7 +310,7 @@ public sealed class UpdateInstaller
         var final = Path.Combine(downloadDir, UpdateChecker.InstallerName);
         try
         {
-            using var response = await _http.GetAsync(info.InstallerUrl, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+            using var response = await GetAssetAsync(info.InstallerUrl, info.Tag, UpdateChecker.InstallerName, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode) throw new UpdateException(UpdateFailure.Network, $"HTTP {(int)response.StatusCode}");
             if (!UpdateChecker.IsTrustedRedirectTarget(response.RequestMessage?.RequestUri)) throw new UpdateException(UpdateFailure.Untrusted);
             var total = response.Content.Headers.ContentLength ?? info.Size;
@@ -309,7 +343,7 @@ public sealed class UpdateInstaller
                 throw new UpdateException(UpdateFailure.HashMismatch, $"expected {expected}, got {actual}");
             }
             File.Move(part, final, false);
-            return final;
+            return new VerifiedDownload(final, expected);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
         {
@@ -321,6 +355,49 @@ public sealed class UpdateInstaller
             try { File.Delete(part); if (!File.Exists(final)) Directory.Delete(downloadDir, recursive: false); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         }
+    }
+
+    // Only prune exact names in old download GUID folders, never user files, links or active installers.
+    internal static int PruneOldDownloads(string folder, DateTime nowUtc)
+    {
+        var removed = 0;
+        try
+        {
+            var root = new DirectoryInfo(Path.GetFullPath(folder));
+            for (DirectoryInfo? ancestor = root; ancestor != null; ancestor = ancestor.Parent)
+                if ((ancestor.Attributes & FileAttributes.ReparsePoint) != 0) return 0;
+            foreach (var dir in root.EnumerateDirectories("download-*").Take(32))
+            {
+                try
+                {
+                    if (!Guid.TryParseExact(dir.Name["download-".Length..], "N", out _) ||
+                        (dir.Attributes & FileAttributes.ReparsePoint) != 0 || dir.LastWriteTimeUtc >= nowUtc.AddDays(-30)) continue;
+                    var entries = dir.EnumerateFileSystemInfos().Take(2).ToArray();
+                    if (entries.Length != 1 || entries[0] is not FileInfo file ||
+                        file.Name != UpdateChecker.InstallerName || (file.Attributes & FileAttributes.ReparsePoint) != 0 ||
+                        file.LastWriteTimeUtc >= nowUtc.AddDays(-30)) continue;
+                    using (var probe = file.Open(FileMode.Open, FileAccess.Read, FileShare.None)) { }
+                    file.Delete();
+                    dir.Delete(false);
+                    removed++;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException) { }
+        return removed;
+    }
+
+    public static bool LaunchVerified(VerifiedDownload download, Func<string, SignatureState>? signatureCheck = null)
+    {
+        using var stream = new FileStream(download.Path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (stream.Length <= 0 || stream.Length > MaxInstallerBytes ||
+            !Convert.ToHexString(SHA256.HashData(stream)).Equals(download.Sha256, StringComparison.OrdinalIgnoreCase))
+        {
+            Log("refused: installer changed after download");
+            return false;
+        }
+        return Launch(download.Path, signatureCheck);
     }
 
     private const string InstallerNamePart = "ChronikologioSetup.exe.part";
