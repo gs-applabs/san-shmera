@@ -68,6 +68,20 @@ public class SnapshotTests
     }
 
     [Fact]
+    public void RegionChangeReusesTheCalendarStoreAndStopReleasesIt()
+    {
+        var root = FindData();
+        using var service = new DailySnapshotService(root, "gr", () => new DateOnly(2026, 7, 20));
+        var cy = DayStore.Load(root, "cy");
+        service.UseStore(cy);
+        Assert.True(WaitFor(() => service.Current?.Region == "cy"));
+        Assert.Same(cy, service.Store);
+        service.Dispose();
+        Assert.Null(service.Current);
+        Assert.Throws<ObjectDisposedException>(() => service.Store);
+    }
+
+    [Fact]
     public void TheLinesForTheBarsAreShortAndFew()
     {
         var store = DayStore.Load(FindData(), "gr");
