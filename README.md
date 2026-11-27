@@ -6,6 +6,19 @@
 
 <p align="center"><a href="#at-a-glance--με-μια-ματιά">Overview / Επισκόπηση</a> · <a href="#full-documentation--αναλυτική-τεκμηρίωση">Full documentation / Τεκμηρίωση</a> · <a href="https://github.com/gs-applabs/san-shmera/issues">Support / Υποστήριξη</a> · <a href="https://github.com/gs-applabs">GS App Labs</a></p>
 
+## Current screenshot gallery / Νέα στιγμιότυπα
+
+<table>
+<tr>
+<td width="50%" valign="top"><a href="docs/product-snapshots/window-day-light.png"><img src="docs/product-snapshots/window-day-light.png" width="100%" alt="Daily calendar / Ημερολόγιο ημέρας"/></a><br/><sub>Daily calendar / Ημερολόγιο ημέρας</sub></td>
+<td width="50%" valign="top"><a href="docs/product-snapshots/details-dark-0325.png"><img src="docs/product-snapshots/details-dark-0325.png" width="100%" alt="Historical details / Ιστορικά γεγονότα"/></a><br/><sub>Historical details / Ιστορικά γεγονότα</sub></td>
+</tr>
+</table>
+
+**[Browse application screenshots / Προβολή στιγμιοτύπων](docs/product-snapshots/README.md)** · [Capture workflow / Μηχανισμός λήψης](../../actions/workflows/product-snapshots.yml)
+
+<sub>Actual application rendering on Windows CI. / Πραγματική απεικόνιση σε Windows CI.</sub>
+
 ## At a glance / Με μια ματιά
 
 | | What you can do / Τι μπορείς να κάνεις |
@@ -105,9 +118,3 @@ build-installer.bat skip-tests   :: χωρίς τεστ
 - **Install:** download `ChronikologioSetup.exe` from Releases and check the SHA-256 in the `.sha256` file. The installer detects Opsis and installs the plugin. Without Opsis, the “On this day” feed still reaches the News Crawler (0.30.0 or newer) through a small file in your user folder. Binaries are not code-signed.
 - **Build:** .NET 11 SDK and Inno Setup 6/7; see the commands above.
 - **Licence:** MIT, see [LICENSE](LICENSE).
-
-
-## Current screenshot gallery / Νέα στιγμιότυπα
-
-[Browse application screenshots / Προβολή στιγμιοτύπων](docs/product-snapshots/README.md)
-
