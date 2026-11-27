@@ -83,6 +83,8 @@ public sealed class CalendarToolsPage : TimeToolsPage
     private readonly FlatComboBox _system = new() { Width = 170, Height = 32 };
     private readonly NumericUpDown _year = Number(1, 9999, 2026), _month = Number(1, 13, 1, 50), _day = Number(1, 31, 1, 50);
     private readonly ListView _conversions, _intervals;
+    private readonly Label _workdays = new() { TextAlign = ContentAlignment.MiddleLeft, Tag = "card" };
+    private readonly string _region;
     private readonly Label _reverse = new() { AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft };
     private static string NameOf(string system) => system switch
     {
@@ -90,9 +92,10 @@ public sealed class CalendarToolsPage : TimeToolsPage
         "hebrew" => T("Εβραϊκό", "Hebrew"), "hijri" => T("Ισλαμικό (αριθμητικό)", "Islamic (tabular)"),
         _ => T("Περσικό", "Persian")
     };
-    public CalendarToolsPage(DateOnly selected) : base(T("Ημερολογιακά εργαλεία", "Calendar tools"),
+    public CalendarToolsPage(DateOnly selected, string region = "gr") : base(T("Ημερολογιακά εργαλεία", "Calendar tools"),
         T("Μετατροπές ημερομηνιών, χρονικές αποστάσεις και επέτειοι — χωρίς Internet.", "Offline calendar conversions, date intervals and anniversaries."))
     {
+        _region = region;
         _first = Picker(selected); _second = Picker(DateOnly.FromDateTime(DateTime.Today));
         _first.AccessibleName = T("Αρχική ημερομηνία", "Start date"); _second.AccessibleName = T("Τελική ημερομηνία", "End date");
         Add(Row(Field(T("Από", "From")), _first, Field(T("Έως", "To"), 48), _second), 50);
@@ -100,6 +103,11 @@ public sealed class CalendarToolsPage : TimeToolsPage
         Add(_conversions, 174);
         _intervals = Table((T("Υπολογισμός", "Calculation"), 280), (T("Αποτέλεσμα", "Result"), 300));
         Add(_intervals, 190);
+        Add(_workdays, 60);
+        AddLabel(region == "cy" ? T("Πηγή: Κεντρική Τράπεζα Κύπρου, 2026–2027. Μόνο τραπεζικές αργίες.", "Source: Central Bank of Cyprus, 2026–2027. Bank holidays only.") : T("Πηγή: Υπουργείο Εργασίας, άρθρο 60 Ν.4808/2021. Κάλυψη 2026, χωρίς τοπικές ή κλαδικές αργίες.", "Source: Ministry of Labour, Law 4808/2021 art. 60. Coverage 2026; no local or sector-specific holidays."), 50, "muted");
+        var sourceLink = new LinkLabel { Text = T("Επίσημη πηγή αργιών", "Official holiday source"), TextAlign = ContentAlignment.MiddleLeft };
+        sourceLink.LinkClicked += (_, _) => { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(region == "cy" ? WorkdayCalendar.CyprusSource : WorkdayCalendar.GreeceSource) { UseShellExecute = true }); } catch (System.ComponentModel.Win32Exception) { } };
+        Add(sourceLink, 30);
         AddLabel(T("Αντίστροφη μετατροπή προς Γρηγοριανό", "Convert back to Gregorian"), 28, "title");
         _system.SetItems(CalendarTools.Systems.Select(NameOf), 1);
         _system.AccessibleName = T("Ημερολογιακό σύστημα", "Calendar system");
@@ -125,6 +133,9 @@ public sealed class CalendarToolsPage : TimeToolsPage
             var d = CalendarTools.Convert(a, s);
             return new[] { NameOf(s), d is null ? T("Εκτός εύρους", "Out of range") : $"{d.Year:D4}-{d.Month:D2}-{d.Day:D2}" };
         }));
+        var work = WorkdayCalendar.Between(a,b,_region);
+        var profile = _region == "cy" ? T("Κύπρος — τραπεζικές ημέρες", "Cyprus — bank working days") : T("Ελλάδα — πενθήμερο με υποχρεωτικές αργίες", "Greece — five-day week, compulsory holidays");
+        _workdays.Text = profile + "\n" + (work is null ? T("Εκτός τεκμηριωμένου εύρους", "Outside reviewed coverage") : $"{work.Workdays:N0} " + T("ημέρες", "days") + $" · {work.ExcludedHolidays} " + T("αργίες καθημερινής", "weekday holidays"));
         var interval = CalendarTools.Between(a,b); var iso = CalendarTools.IsoWeek(a);
         var anniversary = CalendarTools.NextAnniversary(a,b);
         Rows(_intervals, new[]
