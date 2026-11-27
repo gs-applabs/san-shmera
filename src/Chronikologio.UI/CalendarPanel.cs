@@ -204,7 +204,7 @@ public sealed class CalendarPanel : UserControl
         {
             try
             {
-                _thumb.Image = ImageLoader.Load(_store, image);
+                _thumb.Image = ImageLoader.LoadFromStore(_store, image);
             }
             catch (Exception ex) when (ex is ArgumentException or OutOfMemoryException or IOException)
             {
