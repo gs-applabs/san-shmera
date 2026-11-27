@@ -102,10 +102,27 @@ public sealed class DayStore
         store.ApplyEventImages();
         store.ApplySaintImages();
         store.ApplyPersonImages();
+        store.ReleaseLoadBuffers();
         store.Errors = errors;
         return store;
     }
 
+    // Load-only staging collections are not needed by readers after the final merge.
+    private void ReleaseLoadBuffers()
+    {
+        _supplements.Clear(); _supplements.TrimExcess();
+        _lives.Clear(); _lives.TrimExcess();
+        _analysis.Clear(); _analysis.TrimExcess();
+        _bios.Clear(); _bios.TrimExcess();
+        _eventImages.Clear(); _eventImages.TrimExcess();
+        _saintImages.Clear(); _saintImages.TrimExcess();
+        _personImages.Clear(); _personImages.TrimExcess();
+        _checks.Clear(); _checks.TrimExcess();
+        _englishLivesByDate = _enLives.ToLookup(l => (l.Month, l.Day));
+        _enLives.Clear(); _enLives.TrimExcess();
+    }
+
+    private ILookup<(int Month, int Day), (int Month, int Day, string Prefix, string Life)>? _englishLivesByDate;
     private readonly List<(int Month, int Day, int Year, SourceRef[] Sources)> _supplements = new();
 
     /// <summary>Adds the supplementary sources to the events of the same date and year, whichever file those events came from.</summary>
@@ -245,7 +262,7 @@ public sealed class DayStore
     /// <summary>The day with the English texts of its entries, where the database has them (the others stay in Greek).</summary>
     private DayView InEnglish(DayView v)
     {
-        if (_en.Count == 0 && _enLives.Count == 0 && _enAnalysis.Count == 0 && _enBios.Count == 0) return v;
+        if (_en.Count == 0 && (_englishLivesByDate?.Count ?? 0) == 0 && _enAnalysis.Count == 0 && _enBios.Count == 0) return v;
         string T(string kind, int? year, string title, out string text)
         {
             text = "";
@@ -256,7 +273,7 @@ public sealed class DayStore
         var commemorations = v.Commemorations.Select(c =>
         {
             var title = T("saint", null, c.Title, out var text);
-            var life = _enLives.FirstOrDefault(l => l.Month == v.Month && l.Day == v.Day && TextNorm.StartsWithWord(c.Title, l.Prefix)).Life;
+            var life = _englishLivesByDate?[(v.Month, v.Day)].FirstOrDefault(l => TextNorm.StartsWithWord(c.Title, l.Prefix)).Life;
             var summary = text.Length > 0 ? text : c.Summary.StartsWith("Η μνήμη αναφέρεται στον Μέγα Συναξαριστή", StringComparison.Ordinal) ? "The commemoration is mentioned in the Megas Synaxaristis for this day. Its life has not been written yet." : c.Summary;
             return c with { Title = title, Summary = summary, Details = life ?? (c.Details is not null && ContainsGreek(c.Details) ? null : c.Details) };
         }).ToList();
