@@ -66,7 +66,8 @@ Source: "{#DistDir}\app\*"; DestDir: "{app}"; Components: app; Flags: recursesub
 Source: "license-el.txt"; DestDir: "{app}"; DestName: "LICENSE-el.txt"; Components: app; Flags: ignoreversion
 Source: "license-en.txt"; DestDir: "{app}"; DestName: "LICENSE-en.txt"; Components: app; Flags: ignoreversion
 ; The plugin goes into the plugins folder of the Opsis that was found (see [Code]).
-Source: "{#DistDir}\plugin\*"; DestDir: "{code:PluginDir}"; Components: plugin; Flags: recursesubdirs ignoreversion; Check: PluginWillInstall
+Source: "{#DistDir}\plugin\*"; Excludes: "\data\*"; DestDir: "{code:PluginDir}"; Components: plugin; Flags: recursesubdirs ignoreversion; Check: PluginWillInstall
+Source: "shared-library.txt"; DestDir: "{code:PluginDir}"; Components: plugin; Flags: ignoreversion; Check: PluginWillInstall
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; Components: app
