@@ -33,6 +33,14 @@ del /s /q "dist\app\*.pdb" "dist\plugin\*.pdb" >nul 2>nul
 rem The contract DLL belongs to Opsis (it is loaded from Opsis, never from the plugin folder).
 if exist "dist\plugin\OpsisNewsCrawler.Plugin.Abstractions.dll" del "dist\plugin\OpsisNewsCrawler.Plugin.Abstractions.dll"
 
+rem The published folders are disposable. Preserve the source data tree.
+rem The independently distributed plugin still contains a complete packed library.
+echo Packing data without changing image or text bytes...
+python tools\pack_media.py dist\app\data --remove-loose
+if errorlevel 1 goto :fail
+python tools\pack_media.py dist\plugin\data --remove-loose
+if errorlevel 1 goto :fail
+
 echo [4/4] Compiling the installer...
 set "ISCC="
 for %%P in (
