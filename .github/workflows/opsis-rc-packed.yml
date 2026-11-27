@@ -1,0 +1,84 @@
+name: OPSIS 3.0 RC packed plugin gate
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/opsis-rc-packed.yml'
+      - 'src/Chronikologio.OpsisPlugin/**'
+      - 'src/Chronikologio.Core/**'
+      - 'src/Chronikologio.UI/**'
+      - 'tools/pack_media.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  host:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: gs-applabs/Opsis
+          # Actual unified 3.0 RC from PR #18/#20, pinned for reproducible results.
+          ref: 29364bced92e610e8190fe3bc19e892617f461a1
+          path: _opsis-rc
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '11.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify the canonical contract before compilation
+        shell: pwsh
+        run: |
+          $hostContract = (Get-FileHash _opsis-rc/lib/OpsisNewsCrawler.Plugin.Abstractions.dll).Hash
+          $pluginContract = (Get-FileHash libs/OpsisNewsCrawler.Plugin.Abstractions.dll).Hash
+          if ($hostContract -ne $pluginContract) { throw 'Canonical shared contract differs; migration required' }
+          Get-Content _opsis-rc/Version.props
+      - name: Build exact host and Chronikologio plugin
+        shell: pwsh
+        run: |
+          dotnet publish _opsis-rc/Opsis.csproj -c Release -r win-x64 --self-contained false -o host-publish -m:1 --nologo
+          if ($LASTEXITCODE -ne 0) { throw 'RC host build failed' }
+          dotnet publish src/Chronikologio.OpsisPlugin -c Release -o plugin-publish -m:1 --nologo
+          if ($LASTEXITCODE -ne 0) { throw 'Chronikologio publish failed' }
+          python tools/pack_media.py plugin-publish/data --remove-loose
+          if ($LASTEXITCODE -ne 0) { throw 'Packed plugin build failed' }
+          $files = @(Get-ChildItem plugin-publish/data -Recurse -File)
+          if ($files.Count -ne 3) { throw 'Packed plugin library must contain three files' }
+          $dll = (Resolve-Path plugin-publish/Chronikologio.OpsisPlugin.dll).Path
+          if ([Reflection.AssemblyName]::GetAssemblyName($dll).Version.ToString() -ne '1.0.0.0') { throw 'Wrong plugin ABI identity' }
+      - name: Load packed plugin in actual OPSIS RC host
+        shell: pwsh
+        run: |
+          $env:OPSIS_APPDATA = Join-Path $env:RUNNER_TEMP 'chron-rc-isolated'
+          $env:OPSIS_E2E = '1'
+          $plugin = Join-Path $env:OPSIS_APPDATA 'plugins/Chronikologio'
+          New-Item -ItemType Directory -Force $plugin, 'rc-results' | Out-Null
+          Copy-Item plugin-publish/* $plugin -Recurse -Force
+          $exe = (Resolve-Path host-publish/Opsis.exe).Path
+          $out = (Resolve-Path rc-results).Path
+          $process = Start-Process $exe -ArgumentList '--test-plugin-widget',"`"$out`"" -PassThru
+          if (!$process.WaitForExit(150000)) { $process.Kill(); throw 'Host diagnostic timed out' }
+          if ($process.ExitCode -ne 0) { throw "Host diagnostic exit: $($process.ExitCode)" }
+          $summary = Get-Content rc-results/plugin-widget.txt -Raw
+          Write-Host $summary
+          if ($summary -notmatch 'replaced=True' -or $summary -notmatch 'chronikologio' -or $summary -notmatch 'san-simera') {
+            throw 'Calendar replacement or feed registration failed'
+          }
+          if ($summary -notmatch 'chronikologio@1\.0\.0\.0') { throw 'Loaded plugin ABI identity is incorrect' }
+          $log = Join-Path $env:OPSIS_APPDATA 'plugins.log'
+          if (!(Test-Path $log)) { throw 'Host load log not produced' }
+          Copy-Item $log rc-results/plugins.log
+          if (Select-String $log -Pattern 'Failed to load|failed to start|MissingMethodException|ReflectionTypeLoadException|FileLoadException' -Quiet) {
+            throw 'Host plugin load error'
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: opsis-3-rc-packed-plugin
+          path: rc-results/
+          if-no-files-found: warn
