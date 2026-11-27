@@ -45,6 +45,38 @@ public sealed class DayStore
         }
     }
 
+    private readonly object _mediaGate = new();
+    private MediaArchive? _media;
+    private bool _mediaChecked;
+
+    /// <summary>Reads original encoded image bytes from the indexed archive or the legacy loose files.</summary>
+    public byte[] ReadImageBytes(ImageRef image)
+    {
+        var key = MediaArchive.Key(image.File) ?? throw new IOException("Invalid image path.");
+        var path = ImagePath(image);
+        if (path is not null)
+        {
+            using var stream = File.OpenRead(path);
+            if (stream.Length <= 0 || stream.Length > MediaArchive.MaxImageBytes)
+                throw new IOException("Invalid image size.");
+            var bytes = new byte[(int)stream.Length];
+            stream.ReadExactly(bytes);
+            return bytes;
+        }
+        MediaArchive? archive;
+        lock (_mediaGate)
+        {
+            if (!_mediaChecked)
+            {
+                try { _media = MediaArchive.Open(DataRoot); }
+                catch (JsonException ex) { throw new IOException("Invalid media index.", ex); }
+                _mediaChecked = true;
+            }
+            archive = _media;
+        }
+        return archive?.Read(key) ?? throw new FileNotFoundException("Image not present in the library.", key);
+    }
+
     public static DayStore Load(string dataRoot, string region = "gr")
     {
         if (!TraditionsOf.ContainsKey(region)) region = "gr";
