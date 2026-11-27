@@ -53,6 +53,57 @@ public class PluginTests
         Assert.NotNull(control);
     }
 
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern uint GetGuiResources(IntPtr process, uint flags);
+
+    [Fact]
+    public void RepeatedWidgetCreationAndDisposalMaintainsResourcePlateau()
+    {
+        if (Environment.GetEnvironmentVariable("CHRON_SOAK") != "1") return;
+        var plugin = new ChronikologioPlugin();
+        plugin.Start();
+        try
+        {
+            using var process = System.Diagnostics.Process.GetCurrentProcess();
+            var widget = Assert.Single(plugin.GetWidgets());
+            var samples = new List<(long Private, uint Gdi, uint User, int Handles)>();
+            for (var cycle = 0; cycle < 30; cycle++)
+            {
+                using (var form = new Form { Size = new Size(420, 400), StartPosition = FormStartPosition.Manual,
+                    Location = new Point(-32000, -32000), ShowInTaskbar = false, Opacity = 0 })
+                {
+                    var panel = Assert.IsType<Chronikologio.UI.CalendarPanel>(widget.CreateContent());
+                    panel.Dock = DockStyle.Fill;
+                    form.Controls.Add(panel);
+                    form.Show();
+                    for (var day = 0; day < 10; day++)
+                    {
+                        panel.SelectedDate = new DateOnly(2026, 1, 1).AddDays(cycle * 10 + day);
+                        Application.DoEvents();
+                    }
+                    form.Close();
+                }
+                Application.DoEvents();
+                process.Refresh();
+                samples.Add((process.PrivateMemorySize64, GetGuiResources(process.Handle, 0), GetGuiResources(process.Handle, 1), process.HandleCount));
+            }
+            var baseline = samples[9]; var end = samples[^1];
+            var dir = Environment.GetEnvironmentVariable("CHRON_METRICS_DIR");
+            if (!string.IsNullOrEmpty(dir))
+            {
+                Directory.CreateDirectory(dir);
+                File.WriteAllText(Path.Combine(dir, "widget-soak.json"), System.Text.Json.JsonSerializer.Serialize(
+                    samples.Select((s, i) => new { cycle = i + 1, privateBytes = s.Private, gdi = s.Gdi, user = s.User, handles = s.Handles })));
+            }
+            Assert.True(baseline.Gdi > 0 && baseline.User > 0);
+            Assert.True(end.Gdi <= baseline.Gdi + 60, $"Widget GDI {baseline.Gdi} -> {end.Gdi}");
+            Assert.True(end.User <= baseline.User + 60, $"Widget USER {baseline.User} -> {end.User}");
+            Assert.True(end.Handles <= baseline.Handles + 100, $"Widget handles {baseline.Handles} -> {end.Handles}");
+            Assert.True(end.Private <= baseline.Private + 64L * 1024 * 1024, $"Widget private bytes {baseline.Private} -> {end.Private}");
+        }
+        finally { plugin.Stop(); }
+    }
+
     [Fact]
     public void PluginDllIdentityIsSeparateFromProductVersion()
     {
