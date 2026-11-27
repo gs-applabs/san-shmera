@@ -27,6 +27,10 @@ jobs:
         with:
           dotnet-version: '11.0.x'
 
+      - name: Lossless content footprint and integrity audit
+        shell: pwsh
+        run: python tools/audit_data_footprint.py
+
       - name: Tests
         run: dotnet test tests/Chronikologio.Core.Tests --nologo
 
