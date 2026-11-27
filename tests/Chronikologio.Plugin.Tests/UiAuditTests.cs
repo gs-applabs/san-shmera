@@ -211,6 +211,52 @@ public class UiAuditTests : IDisposable
     }
 
     [Fact]
+    public void LongNavigationMaintainsABoundedResourcePlateau()
+    {
+        if (Environment.GetEnvironmentVariable("CHRON_SOAK") != "1") return;
+        using var window = Open(1100, 700);
+        window.Animations = false;
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
+        var first = new DateOnly(2026, 1, 1);
+        var samples = new List<(long Managed, long Private, uint Gdi, uint User, int Handles, double CpuMs)>();
+        void Cycle()
+        {
+            var startCpu = process.TotalProcessorTime.TotalMilliseconds;
+            for (var i = 0; i < 120; i++)
+            {
+                window.SetDate(first.AddDays(i * 3 % 365));
+                if (i % 40 == 0) window.ChooseTheme(i % 80 == 0 ? "dark" : "light");
+                Application.DoEvents();
+            }
+            window.SetDate(first);
+            Application.DoEvents();
+            process.Refresh();
+            samples.Add((GC.GetTotalMemory(false), process.PrivateMemorySize64,
+                GetGuiResources(process.Handle, 0), GetGuiResources(process.Handle, 1), process.HandleCount,
+                process.TotalProcessorTime.TotalMilliseconds - startCpu));
+        }
+        // Six identical workloads: no artificial GC between cycles.
+        for (var i = 0; i < 6; i++) Cycle();
+        var baseline = samples[1];
+        var end = samples[^1];
+        var dir = Environment.GetEnvironmentVariable("CHRON_METRICS_DIR");
+        if (!string.IsNullOrEmpty(dir))
+        {
+            Directory.CreateDirectory(dir);
+            var report = samples.Select((s, i) => new { cycle = i + 1, navigations = (i + 1) * 120,
+                managedBytes = s.Managed, privateBytes = s.Private, gdi = s.Gdi, user = s.User,
+                handles = s.Handles, cpuMs = s.CpuMs });
+            File.WriteAllText(Path.Combine(dir, "soak-metrics.json"), System.Text.Json.JsonSerializer.Serialize(report));
+        }
+        Assert.True(baseline.Gdi > 0 && baseline.User > 0, "GUI counters unavailable");
+        Assert.True(end.Gdi <= baseline.Gdi + 60, $"GDI {baseline.Gdi} -> {end.Gdi}");
+        Assert.True(end.User <= baseline.User + 60, $"USER {baseline.User} -> {end.User}");
+        Assert.True(end.Handles <= baseline.Handles + 100, $"Handles {baseline.Handles} -> {end.Handles}");
+        Assert.True(end.Private <= baseline.Private + 64L * 1024 * 1024, $"Private bytes {baseline.Private} -> {end.Private}");
+        Assert.True(end.CpuMs <= Math.Max(baseline.CpuMs * 1.5, baseline.CpuMs + 2000), $"CPU per cycle {baseline.CpuMs} -> {end.CpuMs}");
+    }
+
+    [Fact]
     public void TheWindowCannotBeMadeSmallerThanWhatFitsItsControls()
     {
         using var window = Open(1100, 700);
