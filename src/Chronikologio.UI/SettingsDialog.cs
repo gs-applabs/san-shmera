@@ -11,6 +11,8 @@ public sealed class SettingsDialog : Form
 {
     private readonly MainWindow _window;
     private readonly FlatComboBox _theme = NewCombo(), _region = NewCombo(), _language = NewCombo();
+    private readonly FlatCheckBox _animations = new() { AutoSize = true };
+    private readonly Label _animationsLabel = new();
     private readonly FlatCheckBox _autoUpdate = new() { AutoSize = true };
     private readonly Opsis.UI.FlatButton _checkNow = new() { Width = 220, Height = 32 };
     private readonly Label _note = new() { AutoSize = false, Height = 34, Dock = DockStyle.Bottom, Tag = "muted" };
@@ -38,10 +40,10 @@ public sealed class SettingsDialog : Form
         KeyPreview = true;
         KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) Close(); };
 
-        var look = AddCard(Loc.T("settings.group.look"), (_lookLabel, _theme));
+        var look = AddCard(Loc.T("settings.group.look"), (_lookLabel, _theme), (_animationsLabel, _animations));
         var calendar = AddCard(Loc.T("settings.group.calendar"), (_regionLabel, _region), (_languageLabel, _language));
         var updates = window.UpdatesEnabled ? AddCard(Loc.T("settings.group.updates"), (new Label(), _autoUpdate), (new Label(), _checkNow)) : null;
-        ClientSize = new Size(560, 380 + (updates is null ? 0 : 140));
+        ClientSize = new Size(560, 426 + (updates is null ? 0 : 140));
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 56, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(0, 10, 0, 0) };
         buttons.Controls.Add(_close);
@@ -62,6 +64,7 @@ public sealed class SettingsDialog : Form
         _theme.SelectedIndexChanged += (_, _) => { if (!_filling && Chosen(_theme) is { } c) _window.ChooseTheme(c.Key); };
         _region.SelectedIndexChanged += (_, _) => { if (!_filling && Chosen(_region) is { } c) { _window.ChooseRegion(c.Key); Fill(); } };
         _language.SelectedIndexChanged += (_, _) => { if (!_filling && Chosen(_language) is { } c) { _window.ChooseLanguage(c.Key); } };
+        _animations.CheckedChanged += (_, _) => { if (!_filling) _window.Animations = _animations.Checked; };
         _autoUpdate.CheckedChanged += (_, _) => { if (!_filling) _window.AutoUpdateCheck = _autoUpdate.Checked; };
         _checkNow.Click += async (_, _) => await _window.CheckForUpdatesAsync(true);
         _reset.Click += (_, _) => { _window.ResetLook(); Fill(); };
@@ -123,6 +126,7 @@ public sealed class SettingsDialog : Form
             Choices(_theme, ChronikologioTheme.Names.Select(n => new Choice(n, ChronikologioTheme.DisplayName(n))), ChronikologioTheme.Name);
             Choices(_region, Countries.All.Select(c => new Choice(c.Region, Loc.T("region." + c.Region))), _window.Region);
             Choices(_language, new[] { "auto", "el", "en" }.Select(c => new Choice(c, Loc.T("language." + c))), _window.LanguageSetting);
+            _animations.Checked = _window.Animations;
             _autoUpdate.Checked = _window.AutoUpdateCheck;
         }
         finally { _filling = false; }
@@ -135,6 +139,8 @@ public sealed class SettingsDialog : Form
         _cards[1].Head.Text = Loc.T("settings.group.calendar");
         if (_cards.Count > 2) _cards[2].Head.Text = Loc.T("settings.group.updates");
         _lookLabel.Text = Loc.T("settings.theme");
+        _animationsLabel.Text = Loc.Language == "en" ? "Animation" : "Κίνηση";
+        _animations.Text = Loc.Language == "en" ? "Decorative animation (more CPU)" : "Κινούμενα γραφικά (περισσότερη CPU)";
         _regionLabel.Text = Loc.T("settings.region");
         _languageLabel.Text = Loc.T("settings.language");
         _autoUpdate.Text = Loc.T("upd.menu.auto");
@@ -153,6 +159,7 @@ public sealed class SettingsDialog : Form
         ForeColor = p.Text;
         foreach (var (card, head) in _cards) { card.BackColor = p.Surface; card.ForeColor = p.Text; head.BackColor = p.Surface; head.ForeColor = p.Accent; }
         foreach (var l in _labels) { l.BackColor = p.Surface; l.ForeColor = p.Text; }
+        _animations.BackColor = p.Surface; _animations.ForeColor = p.Text;
         _autoUpdate.BackColor = p.Surface; _autoUpdate.ForeColor = p.Text;
         _note.BackColor = p.Background; _note.ForeColor = p.TextMuted;
         foreach (var table in _cards.SelectMany(c => c.Card.Controls.OfType<TableLayoutPanel>())) table.BackColor = p.Surface;
