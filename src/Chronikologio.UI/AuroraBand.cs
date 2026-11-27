@@ -4,12 +4,11 @@ using Chronikologio.Core;
 
 namespace Chronikologio.UI;
 
-/// <summary>One clock for every living background of the window (about 12 pictures a second); it runs only while something listens.</summary>
+/// <summary>One adaptive clock for all living backgrounds, with a slow polling interval while no subscribed control is visible.</summary>
 public static class WaveClock
 {
     private static readonly System.Windows.Forms.Timer Timer = new() { Interval = 33 };   // about 30 pictures a second: the lines move smoothly
-    private static int _listeners;
-    private static event Action? TickEvent;
+    private static readonly Dictionary<Action, Control> Listeners = new();
 
     private static readonly System.Diagnostics.Stopwatch Clock = System.Diagnostics.Stopwatch.StartNew();
 
@@ -18,19 +17,30 @@ public static class WaveClock
 
     static WaveClock()
     {
-        Timer.Tick += (_, _) => TickEvent?.Invoke();
+        Timer.Tick += (_, _) =>
+        {
+            var active = false;
+            foreach (var (handler, control) in Listeners.ToArray())
+            {
+                if (!ShouldDraw(control)) continue;
+                active = true;
+                handler();
+            }
+            var interval = active ? 33 : 250;
+            if (Timer.Interval != interval) Timer.Interval = interval;
+        };
     }
 
-    public static void Subscribe(Action handler)
+    public static void Subscribe(Control control, Action handler)
     {
-        TickEvent += handler;
-        if (++_listeners == 1) Timer.Start();
+        Listeners[handler] = control;
+        if (Listeners.Count == 1) { Timer.Interval = 33; Timer.Start(); }
     }
 
     public static void Unsubscribe(Action handler)
     {
-        TickEvent -= handler;
-        if (--_listeners <= 0) { _listeners = 0; Timer.Stop(); }
+        Listeners.Remove(handler);
+        if (Listeners.Count == 0) Timer.Stop();
     }
 
     /// <summary>True when a control should draw the next frame: it is shown and its window is not minimised.</summary>
@@ -49,19 +59,21 @@ public static class Waves
         g.SmoothingMode = SmoothingMode.AntiAlias;
         // the same recipe as the header of Opsis: three thin low-opacity sine lines, a point every 16 px, joined by straight segments
         var color = palette.IsDark ? Color.FromArgb(150, 190, 230) : Color.FromArgb(90, 150, 200);
-        var colors = new[] { palette.Accent, color, palette.Accent };
+        var points = new PointF[area.Width / 16 + 1];
         var t = time * 2.5;
         for (var i = 0; i < 3; i++)
         {
             var phase = t * (0.5 + i * 0.15) + i * 1.7;
             var amp = 6 + i * 3;
             var baseline = area.Height * (0.35 + i * 0.28);
-            var points = new List<PointF>();
-            for (var x = 0; x <= area.Width; x += 16)
-                points.Add(new PointF(area.X + x, (float)(area.Y + baseline + Math.Sin(phase + x * 0.012) * amp)));
-            if (points.Count < 2) continue;
-            using var pen = new Pen(Color.FromArgb(90 - i * 15, colors[i]), 1.6f) { LineJoin = LineJoin.Round };
-            g.DrawLines(pen, points.ToArray());
+            for (var j = 0; j < points.Length; j++)
+            {
+                var x = j * 16;
+                points[j] = new PointF(area.X + x, (float)(area.Y + baseline + Math.Sin(phase + x * 0.012) * amp));
+            }
+            if (points.Length < 2) continue;
+            using var pen = new Pen(Color.FromArgb(90 - i * 15, i == 1 ? color : palette.Accent), 1.6f) { LineJoin = LineJoin.Round };
+            g.DrawLines(pen, points);
         }
         g.SmoothingMode = old;
     }
@@ -76,7 +88,7 @@ public sealed class AuroraBand : Control
     {
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         _tick = () => { if (Animated && WaveClock.ShouldDraw(this) && Parent is { Visible: true }) Invalidate(); };
-        WaveClock.Subscribe(_tick);
+        WaveClock.Subscribe(this, _tick);
     }
 
     /// <summary>Turns the movement off (the background then stays still).</summary>
