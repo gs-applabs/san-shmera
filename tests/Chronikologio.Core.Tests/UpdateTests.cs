@@ -108,6 +108,46 @@ public sealed class UpdateTests : IDisposable
     }
 
     [Fact]
+    public void InstallerAndHashMustBelongToTheExactReleaseAndAsset()
+    {
+        var root = $"https://github.com/{UpdateChecker.Repository}/releases/download/";
+        Assert.Equal(UpdateOutcome.NoInstaller, UpdateChecker.Parse(Release("v0.9.0", installerUrl: root + "v0.8.0/ChronikologioSetup.exe"), Now).Outcome);
+        Assert.Equal(UpdateOutcome.NoInstaller, UpdateChecker.Parse(Release("v0.9.0", hashUrl: root + "v0.9.0/Other.exe.sha256"), Now).Outcome);
+        Assert.Equal(UpdateOutcome.NoInstaller, UpdateChecker.Parse(Release("v0.9.0", installerUrl: root + "v0.9.0/ChronikologioSetup.exe?x=1"), Now).Outcome);
+    }
+
+    [Fact]
+    public void InvalidCachedStateIsBoundedAndNullFieldsAreNormalized()
+    {
+        var file = Path.Combine(_dir, "state.json");
+        File.WriteAllText(file, "{\"ETag\":null,\"CachedJson\":null,\"SkippedTag\":null}");
+        var state = UpdateState.Load(file);
+        Assert.Empty(state.ETag);
+        Assert.Empty(state.CachedJson);
+        Assert.Empty(state.SkippedTag);
+        using (var stream = File.Create(file)) stream.SetLength(17L * 1024 * 1024);
+        Assert.Empty(UpdateState.Load(file).CachedJson);
+        new UpdateState { ETag = "test" }.Save(file);
+        Assert.Equal("test", UpdateState.Load(file).ETag);
+        Assert.Empty(Directory.GetFiles(_dir, "*.tmp"));
+    }
+
+    [Fact]
+    public async Task ParallelDownloadsDoNotOverwriteOrDeleteEachOther()
+    {
+        var first = new UpdateInstaller(new HttpClient(Server(Hash(Installer), Installer)));
+        var second = new UpdateInstaller(new HttpClient(Server(Hash(Installer), Installer)));
+        var paths = await Task.WhenAll(first.DownloadAsync(Info(), _dir), second.DownloadAsync(Info(), _dir));
+        Assert.NotEqual(paths[0], paths[1]);
+        foreach (var path in paths) Assert.Equal(Installer, File.ReadAllBytes(path));
+        var invalid = new UpdateInstaller(new HttpClient(Server(Hash(new byte[] { 0 }), Installer)));
+        await Assert.ThrowsAsync<UpdateException>(() => invalid.DownloadAsync(Info(), _dir));
+        Assert.Equal(2, Directory.GetDirectories(_dir, "download-*").Length);
+        foreach (var path in paths) Assert.True(File.Exists(path));
+        Assert.Empty(Directory.GetFiles(_dir, "*.part", SearchOption.AllDirectories));
+    }
+
+    [Fact]
     public void TheDownloadLimitLeavesRoomForTheInstaller() => Assert.True(UpdateInstaller.MaxInstallerBytes >= 600L * 1024 * 1024);
 
     [Fact]
@@ -189,7 +229,7 @@ public sealed class UpdateTests : IDisposable
         var other = Hash(Encoding.UTF8.GetBytes("something else"));
         var ex = await Assert.ThrowsAsync<UpdateException>(() => new UpdateInstaller(new HttpClient(Server(other, Installer))).DownloadAsync(Info(), _dir));
         Assert.Equal(UpdateFailure.HashMismatch, ex.Failure);
-        Assert.Empty(Directory.GetFiles(_dir, "ChronikologioSetup*"));
+        Assert.Empty(Directory.GetFiles(_dir, "ChronikologioSetup*", SearchOption.AllDirectories));
     }
 
     [Fact]
@@ -197,7 +237,7 @@ public sealed class UpdateTests : IDisposable
     {
         var ex = await Assert.ThrowsAsync<UpdateException>(() => new UpdateInstaller(new HttpClient(Server("garbage", Installer))).DownloadAsync(Info(), _dir));
         Assert.Equal(UpdateFailure.NoHash, ex.Failure);
-        Assert.Empty(Directory.GetFiles(_dir, "ChronikologioSetup*"));
+        Assert.Empty(Directory.GetFiles(_dir, "ChronikologioSetup*", SearchOption.AllDirectories));
     }
 
     [Fact]
@@ -221,7 +261,7 @@ public sealed class UpdateTests : IDisposable
         };
         var ex = await Assert.ThrowsAsync<UpdateException>(() => new UpdateInstaller(new HttpClient(fake)).DownloadAsync(Info(), _dir));
         Assert.Equal(UpdateFailure.Untrusted, ex.Failure);
-        Assert.Empty(Directory.GetFiles(_dir, "ChronikologioSetup*"));
+        Assert.Empty(Directory.GetFiles(_dir, "ChronikologioSetup*", SearchOption.AllDirectories));
     }
 
     [Fact]
@@ -230,7 +270,7 @@ public sealed class UpdateTests : IDisposable
         var fake = new Fake { Reply = req => req.RequestUri!.AbsolutePath.EndsWith(".sha256", StringComparison.Ordinal) ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(Hash(Installer)) } : throw new HttpRequestException("cut") };
         var ex = await Assert.ThrowsAsync<UpdateException>(() => new UpdateInstaller(new HttpClient(fake)).DownloadAsync(Info(), _dir));
         Assert.Equal(UpdateFailure.Network, ex.Failure);
-        Assert.Empty(Directory.GetFiles(_dir, "ChronikologioSetup*"));
+        Assert.Empty(Directory.GetFiles(_dir, "ChronikologioSetup*", SearchOption.AllDirectories));
     }
 
     [Theory]
