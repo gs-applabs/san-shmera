@@ -136,6 +136,7 @@ public sealed class MainWindow : Form
     {
         Text = Loc.T("app.title");
         _searchBar.SetPlaceholder(Loc.T("search.placeholder"));
+        _searchBar.SetStore(_store);
         BuildRail();
     }
 
