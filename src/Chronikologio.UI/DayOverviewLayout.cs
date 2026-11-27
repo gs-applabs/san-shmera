@@ -561,7 +561,7 @@ public sealed class DayOverviewLayout : DayLayout
             try { image = ImageLoader.Load(path); info = candidate; break; }
             catch (Exception ex) when (ex is ArgumentException or OutOfMemoryException or IOException) { path = null; }
         }
-        var link = e.Sources.FirstOrDefault(s => !string.IsNullOrEmpty(s.Url));
+        var link = e.Sources.FirstOrDefault(s => Uri.TryCreate(s.Url, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp));
         var source = link is null ? Loc.T("event.source") + ": " + (e.Sources.FirstOrDefault()?.Citation.Split(". ")[0] ?? "") : Loc.T("event.source") + ": " + new Uri(link.Url!).Host.Replace("www.", "");
         return new EventTile(e.Year is { } y ? y.ToString(CultureInfo.InvariantCulture) : "", e.Title, e.Summary, source, image, info, path);
     }
