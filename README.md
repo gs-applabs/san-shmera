@@ -1,3 +1,32 @@
+<p align="center"><img src="https://raw.githubusercontent.com/gs-applabs/gs-applabs/main/assets/projects/chronikologio.svg" width="100%" alt="Chronikologio — Timeline Calendar"/></p>
+
+<p align="center"><strong>Discover today's name days, holidays and historical events for Greece and Cyprus.</strong><br/>Η ιστορία και το εορτολόγιο κάθε ημέρας.</p>
+
+<p align="center"><a href="https://github.com/gs-applabs/san-shmera/releases/download/v1.2.1/ChronikologioSetup.exe"><img alt="Download v1.2.1" src="https://img.shields.io/badge/DOWNLOAD-v1.2.1-087EA4?style=for-the-badge"/></a> <a href="https://github.com/gs-applabs/san-shmera/releases/latest"><img alt="Release notes" src="https://img.shields.io/badge/RELEASE-NOTES-334155?style=for-the-badge"/></a></p>
+
+<p align="center"><a href="#at-a-glance--με-μια-ματιά">Overview / Επισκόπηση</a> · <a href="#full-documentation--αναλυτική-τεκμηρίωση">Full documentation / Τεκμηρίωση</a> · <a href="https://github.com/gs-applabs/san-shmera/issues">Support / Υποστήριξη</a> · <a href="https://github.com/gs-applabs">GS App Labs</a></p>
+
+## At a glance / Με μια ματιά
+
+| | What you can do / Τι μπορείς να κάνεις |
+|---|---|
+| **Today / Σήμερα** | Name days, saints and historical events / Εορτές, άγιοι και γεγονότα |
+| **Explore / Εξερεύνηση** | Search and timeline browsing / Αναζήτηση και ιστορικό χρονολόγιο |
+| **Connect / Διασύνδεση** | OPSIS plugin and News Crawler feed / Πρόσθετο και ροή ειδήσεων |
+
+### Get started / Ξεκίνημα
+
+- **Installer:** [ChronikologioSetup.exe](https://github.com/gs-applabs/san-shmera/releases/download/v1.2.1/ChronikologioSetup.exe) · [SHA-256](https://github.com/gs-applabs/san-shmera/releases/download/v1.2.1/ChronikologioSetup.exe.sha256)
+- **Requirements / Απαιτήσεις:** Windows 11 · .NET 11 Desktop Runtime.
+- **What's new / Νέα έκδοση:** Update verification fixed; upgrade manually from 1.2.0 or earlier. / Διορθώθηκε ο έλεγχος ενημερώσεων· μία χειροκίνητη εγκατάσταση από 1.2.0 ή παλαιότερη.
+- **Known limits / Όρια:** Historical and religious data have documented review states; the app is not an official authority. Installer unsigned. / Δεν αποτελεί επίσημη ιστορική ή εκκλησιαστική πηγή.
+
+See the [published release](https://github.com/gs-applabs/san-shmera/releases/tag/v1.2.1) for verification details. Review installation prompts and compare the checksum before running the installer. / Δείτε τις σημειώσεις έκδοσης και επαληθεύστε το SHA-256 πριν από την εγκατάσταση.
+
+---
+
+## Full documentation / Αναλυτική τεκμηρίωση
+
 ﻿# Χρονικολόγιο — Timeline Calendar
 
 <p align="center">
