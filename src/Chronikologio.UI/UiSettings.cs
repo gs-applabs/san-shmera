@@ -35,7 +35,7 @@ public sealed class UiSettings
         try
         {
             path ??= DefaultPath;
-            if (!File.Exists(path)) return new UiSettings();
+            if (!File.Exists(path) || new FileInfo(path).Length > 64 * 1024) return new UiSettings();
             var s = JsonSerializer.Deserialize<UiSettings>(File.ReadAllText(path)) ?? new UiSettings();
             if (!ChronikologioTheme.Names.Contains(s.Theme)) s.Theme = "system";
             if (!DayStore.Regions.Contains(s.Region)) s.Region = "gr";
@@ -52,15 +52,27 @@ public sealed class UiSettings
 
     public void Save(string? path = null)
     {
+        string? temp = null;
         try
         {
-            path ??= DefaultPath;
+            path = Path.GetFullPath(path ?? DefaultPath);
+            var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
+            if (File.Exists(path) && new FileInfo(path).Length <= 64 * 1024 && File.ReadAllText(path) == json) return;
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+            temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            using (var writer = new StreamWriter(stream)) writer.Write(json);
+            File.Move(temp, path, overwrite: true);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
-            // the settings are a convenience: failing to save must never stop the app
+            // The settings are a convenience: failing to save must never stop the app.
+        }
+        finally
+        {
+            if (temp is not null)
+                try { File.Delete(temp); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         }
     }
 }
