@@ -446,9 +446,10 @@ public sealed class DayOverviewLayout : DayLayout
     private void ShowHero(DayView day)
     {
         var p = ChronikologioTheme.Palette;
+        _heroPhoto.Image = null;
         _heroImage?.Dispose();
         _heroImage = null; _heroInfo = null;
-        _heroPhoto.Image = null; _heroPhoto.Width = 0;
+        _heroPhoto.Width = 0;
         foreach (Control c in _names.Controls.Cast<Control>().ToList()) { _names.Controls.Remove(c); c.Dispose(); }
 
         var ordered = day.Commemorations.OrderByDescending(c => c.IsMajorFeast).ToList();
@@ -458,7 +459,11 @@ public sealed class DayOverviewLayout : DayLayout
         {
             _heroTitle.Text = Loc.T("short.noentries");
             _heroText.Text = "";
+            _read.Links.Clear();
             _read.Text = ""; _others.Text = "";
+            _heroNames = 0;
+            ShowNames(day);
+            FitHero();
             return;
         }
         _heroTitle.Text = main.Title;
