@@ -38,7 +38,7 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
     // The calendar (Greece or Cyprus) is the one chosen in the stand-alone app's View menu; it is stored in the same settings file.
     // The service reads the data and makes the lines of the day on a background thread, so the bars never wait for the files.
     private DailySnapshotService Service => _service ??= new DailySnapshotService(
-        Path.Combine(Path.GetDirectoryName(typeof(ChronikologioPlugin).Assembly.Location) ?? AppContext.BaseDirectory, "data"),
+        PluginDataRoot.Resolve(Path.GetDirectoryName(typeof(ChronikologioPlugin).Assembly.Location) ?? AppContext.BaseDirectory, Version),
         UiSettings.Load().Region);
 
     public void Start()
