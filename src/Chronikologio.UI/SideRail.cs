@@ -37,6 +37,7 @@ public sealed class SideRail : Control
     private readonly ToolTip _tip = new();
     private readonly Action _tick;
     private int _hover = -1;
+    private int _keyboardIndex;
     private int _lastLogoCycle = -1;
     private bool _lastFlipping;
     private readonly System.Windows.Forms.Timer _pulseTimer = new() { Interval = 350 };
@@ -53,6 +54,8 @@ public sealed class SideRail : Control
     public SideRail()
     {
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        SetStyle(ControlStyles.Selectable, true);
+        TabStop = true;
         Dock = DockStyle.Left;
         Width = RailWidth;
         Cursor = Cursors.Hand;
@@ -76,6 +79,7 @@ public sealed class SideRail : Control
     {
         _items.Clear();
         _items.AddRange(items);
+        _keyboardIndex = Math.Clamp(_keyboardIndex, 0, Math.Max(0, _items.Count - 1));
         AccessibleRole = AccessibleRole.ToolBar;
         AccessibleName = BrandTitle;
         AccessibleDescription = string.Join(", ", _items.Select(i => i.Label));   // the buttons are painted, so a screen reader gets their names here
@@ -129,6 +133,7 @@ public sealed class SideRail : Control
             var color = selected ? p.Accent : p.TextMuted;
             if (i == _hover || _items[i].Key == _pulse) g.FillRectangle(hoverBrush, r);
             if (selected) g.FillRectangle(accent, 0, r.Y + 8, 3, r.Height - 16);
+            if (Focused && i == _keyboardIndex) ControlPaint.DrawFocusRectangle(g, r, p.Text, p.Surface);
             var iconCell = new Rectangle(r.X, r.Y, 44, r.Height);
             if (_items[i].Key == "help") DrawInfo(g, iconCell, color);
             else TextRenderer.DrawText(g, _items[i].Glyph, glyphFont, iconCell, color, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
@@ -255,12 +260,31 @@ public sealed class SideRail : Control
         Invalidate();
     }
 
+    protected override bool IsInputKey(Keys keyData) => (keyData & Keys.KeyCode) is Keys.Up or Keys.Down or Keys.Home or Keys.End || base.IsInputKey(keyData);
+    protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
+    protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); Invalidate(); }
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (_items.Count == 0) return;
+        switch (e.KeyCode)
+        {
+            case Keys.Up: _keyboardIndex = Math.Max(0, _keyboardIndex - 1); break;
+            case Keys.Down: _keyboardIndex = Math.Min(_items.Count - 1, _keyboardIndex + 1); break;
+            case Keys.Home: _keyboardIndex = 0; break;
+            case Keys.End: _keyboardIndex = _items.Count - 1; break;
+            case Keys.Space:
+            case Keys.Enter: _items[_keyboardIndex].Click(); break;
+            default: return;
+        }
+        e.Handled = true; e.SuppressKeyPress = true; Invalidate();
+    }
     protected override void OnMouseUp(MouseEventArgs e)
     {
         base.OnMouseUp(e);
         if (e.Button != MouseButtons.Left) return;
         var i = IndexAt(e.Location);
-        if (i >= 0) _items[i].Click();
+        if (i >= 0) { _keyboardIndex = i; Focus(); _items[i].Click(); }
     }
 
     protected override void Dispose(bool disposing)
