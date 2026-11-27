@@ -19,7 +19,7 @@ public sealed class DailySnapshotService : IDisposable
     private System.Threading.Timer? _midnight;
     private volatile bool _disposed;
     private readonly object _workGate = new();
-    private bool _workerRunning, _pending, _pendingReload;
+    private bool _workerRunning, _pending, _pendingReload, _started;
 
     public DailySnapshotService(string dataRoot, string region, Func<DateOnly>? today = null)
     {
@@ -42,13 +42,22 @@ public sealed class DailySnapshotService : IDisposable
     {
         get
         {
-            lock (_gate) return _store ??= DayStore.Load(_dataRoot, _region);
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                return _store ??= DayStore.Load(_dataRoot, _region);
+            }
         }
     }
 
     /// <summary>Starts the first snapshot and the midnight timer. Returns at once.</summary>
     public void Start()
     {
+        lock (_workGate)
+        {
+            if (_disposed || _started) return;
+            _started = true;
+        }
         Rebuild(reload: true);
         ScheduleMidnight();
     }
@@ -88,11 +97,12 @@ public sealed class DailySnapshotService : IDisposable
         DailySnapshot snapshot;
         lock (_gate)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             if (reload) _store = null;
             _store ??= DayStore.Load(_dataRoot, _region);
             var date = _today();
             snapshot = new DailySnapshot(date, _region, Loc.Language, SanSimeraFeed.BuildForTicker(_store, date), DateTimeOffset.Now);
-            _current = snapshot;
+            if (!_disposed) _current = snapshot;
         }
         if (!_disposed) Changed?.Invoke();
         return snapshot;
@@ -127,7 +137,7 @@ public sealed class DailySnapshotService : IDisposable
                 _pending = _pendingReload = false;
             }
             try { if (!_disposed) BuildNow(reload); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+            catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
             {
                 System.Diagnostics.Debug.WriteLine("Chronikologio snapshot failed: " + ex.Message);
             }
@@ -159,5 +169,7 @@ public sealed class DailySnapshotService : IDisposable
             _midnight?.Dispose();
             _midnight = null;
         }
+        // Never hold the scheduling lock while waiting for an in-flight database load.
+        lock (_gate) { _store = null; _current = null; Changed = null; }
     }
 }
