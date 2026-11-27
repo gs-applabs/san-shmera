@@ -31,9 +31,18 @@ public sealed class DayStore
     /// <summary>Full path of an image file under data/images, or null when the name tries to leave that folder or the file is missing.</summary>
     public string? ImagePath(ImageRef image)
     {
-        var root = Path.GetFullPath(Path.Combine(DataRoot, "images"));
-        var full = Path.GetFullPath(Path.Combine(root, image.File));
-        return full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) && File.Exists(full) ? full : null;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(image.File) || Path.IsPathRooted(image.File)) return null;
+            var root = Path.GetFullPath(Path.Combine(DataRoot, "images"));
+            var full = Path.GetFullPath(Path.Combine(root, image.File));
+            var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            return full.StartsWith(root + Path.DirectorySeparatorChar, comparison) && File.Exists(full) ? full : null;
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     public static DayStore Load(string dataRoot, string region = "gr")
