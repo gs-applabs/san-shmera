@@ -14,8 +14,39 @@ internal static class Program
         catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException) { }
         window.EnableUpdates();   // only the stand-alone app: inside Opsis the plugin is updated by Opsis
         // The lines of "On this day" for the News Crawler when it runs without Opsis: a small file, written only when its content changes.
-        window.PublishFeed = store => Task.Run(() => Chronikologio.Core.FeedExchange.TryWrite(store));
+        using var publishGate = new SemaphoreSlim(1, 1);
+        // Keep only the newest queued request; writes from this process are serialized.
+        long generation = 0;
+        Task pending = Task.CompletedTask;
+        window.PublishFeed = store =>
+        {
+            var request = Interlocked.Increment(ref generation);
+            pending = Task.Run(async () =>
+            {
+                await publishGate.WaitAsync().ConfigureAwait(false);
+                try
+                {
+                    if (request == Interlocked.Read(ref generation))
+                        Chronikologio.Core.FeedExchange.TryWrite(store);
+                }
+                finally { publishGate.Release(); }
+            });
+        };
+        var publishedDate = DateOnly.FromDateTime(DateTime.Today);
+        using var dayTimer = new System.Windows.Forms.Timer { Interval = 60_000 };
+        dayTimer.Tick += (_, _) =>
+        {
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            if (today == publishedDate) return;
+            publishedDate = today;
+            window.PublishFeedNow();
+        };
         window.PublishFeedNow();
+        dayTimer.Start();
         Application.Run(window);
+        dayTimer.Stop();
+        // Drain queued writes before disposing the semaphore.
+        try { pending.GetAwaiter().GetResult(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
     }
 }
