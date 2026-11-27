@@ -65,6 +65,8 @@ public static class ImageLoader
             var info = new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Bgra8888, SKAlphaType.Unpremul);
             using var skia = SKBitmap.Decode(codec, info) ?? throw new ArgumentException("damaged WebP image");
             var bitmap = new Bitmap(info.Width, info.Height, PixelFormat.Format32bppArgb);
+            try
+            {
             var data = bitmap.LockBits(new Rectangle(0, 0, info.Width, info.Height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
             try
             {
@@ -78,6 +80,8 @@ public static class ImageLoader
             }
             finally { bitmap.UnlockBits(data); }
             return bitmap;
+            }
+            catch { bitmap.Dispose(); throw; }
         }
         catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or IOException)
         {
