@@ -97,7 +97,7 @@ public sealed class CalendarToolsPage : TimeToolsPage
         T("Μετατροπές ημερομηνιών, χρονικές αποστάσεις και επέτειοι — χωρίς Internet.", "Offline calendar conversions, date intervals and anniversaries."))
     {
         _region = region;
-        _first = Picker(selected); _second = Picker(DateOnly.FromDateTime(DateTime.Today));
+        _first = Picker(selected, 1753, 9999); _second = Picker(DateOnly.FromDateTime(DateTime.Today), 1753, 9999);
         _first.AccessibleName = T("Αρχική ημερομηνία", "Start date"); _second.AccessibleName = T("Τελική ημερομηνία", "End date");
         Add(Row(Field(T("Από", "From")), _first, Field(T("Έως", "To"), 48), _second), 50);
         _conversions = Table((T("Ημερολόγιο", "Calendar"), 280), (T("Ημερομηνία (Ε-Μ-Η)", "Date (Y-M-D)"), 230));
@@ -138,14 +138,14 @@ public sealed class CalendarToolsPage : TimeToolsPage
         var profile = _region == "cy" ? T("Κύπρος — τραπεζικές ημέρες", "Cyprus — bank working days") : T("Ελλάδα — πενθήμερο με υποχρεωτικές αργίες", "Greece — five-day week, compulsory holidays");
         _workdays.Text = profile + "\n" + (work is null ? T("Εκτός τεκμηριωμένου εύρους", "Outside reviewed coverage") : $"{work.Workdays:N0} " + T("ημέρες", "days") + $" · {work.ExcludedHolidays} " + T("αργίες καθημερινής", "weekday holidays"));
         var interval = CalendarTools.Between(a,b); var iso = CalendarTools.IsoWeek(a);
-        var anniversary = CalendarTools.NextAnniversary(a,b);
+        var anniversary = CalendarTools.TryNextAnniversary(a,b);
         Rows(_intervals, new[]
         {
             new[] { T("Διαφορά ημερών (με πρόσημο)", "Signed days"), interval.TotalDays.ToString("N0", Loc.Culture) },
             new[] { T("Έτη / μήνες / ημέρες (απόλυτα)", "Years / months / days (absolute)"), $"{interval.Years} / {interval.Months} / {interval.Days}" },
             new[] { T("Εβδομάδα ISO της αρχικής", "Start ISO week"), $"{iso.Year}-W{iso.Week:D2}" },
             new[] { T("Δευτέρα–Παρασκευή (μαζί με άκρα)", "Mon–Fri (inclusive)"), CalendarTools.Weekdays(a,b).ToString("N0",Loc.Culture) },
-            new[] { T("Επόμενη επέτειος από τη λήξη", "Next anniversary from end"), anniversary.ToString("dd/MM/yyyy") }
+            new[] { T("Επόμενη επέτειος από τη λήξη", "Next anniversary from end"), anniversary?.ToString("dd/MM/yyyy") ?? T("Εκτός εύρους ημερομηνιών", "Outside date range") }
         });
     }
 }
