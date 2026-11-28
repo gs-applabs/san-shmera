@@ -99,6 +99,7 @@ public sealed class MainWindow : Form
         {
             new SideRail.RailItem("today", "\uE787", Loc.T("menu.today") + " (Ctrl+Home)", GoToday, Loc.T("menu.today"), T("ΗΜΕΡΟΛΟΓΙΟ", "CALENDAR")),
             new SideRail.RailItem("calendar-tools", "\uE787", T("Μετατροπές και υπολογισμοί (Ctrl+1)", "Conversions and calculations (Ctrl+1)"), () => OpenPage("calendar-tools"), T("Εργαλεία ημερολογίου", "Calendar tools")),
+            new SideRail.RailItem("personal-calendar", "\uE787", T("Ιδιωτικές εγγραφές (Ctrl+3)", "Private entries (Ctrl+3)"), () => OpenPage("personal-calendar"), T("Προσωπικό ημερολόγιο", "Personal calendar")),
             new SideRail.RailItem("astronomy", "\uE708", T("Ήλιος, Σελήνη, εκλείψεις (Ctrl+2)", "Sun, Moon, eclipses (Ctrl+2)"), () => OpenPage("astronomy"), T("Αστρονομία", "Astronomy"), T("ΑΣΤΡΟΝΟΜΙΑ", "ASTRONOMY")),
             new SideRail.RailItem("theme", "\uE790", Loc.T("menu.theme") + " (Ctrl+T)", CycleTheme, Loc.T("menu.theme"), T("ΕΦΑΡΜΟΓΗ", "APPLICATION")),
             new SideRail.RailItem("settings", "", Loc.T("menu.settings") + " (Ctrl+,)", ShowSettings, Loc.T("menu.settings")),
@@ -120,7 +121,7 @@ public sealed class MainWindow : Form
     private string EffectiveSite => _settings.AstronomySite == "auto" ? (Region == "cy" ? "nicosia" : "athens") : _settings.AstronomySite;
     public void OpenPage(string page)
     {
-        if (page is not ("today" or "calendar-tools" or "astronomy") || ActivePage == page) return;
+        if (page is not ("today" or "calendar-tools" or "astronomy" or "personal-calendar") || ActivePage == page) return;
         ActivePage = page;
         RebuildToolPage();
     }
@@ -134,7 +135,14 @@ public sealed class MainWindow : Form
             if (ActivePage != "today")
             {
                 _searchBar.Clear();
-                _toolsPage = ActivePage == "calendar-tools" ? new CalendarToolsPage(_date, Region) : new AstronomyPage(_date, EffectiveSite);
+                _toolsPage = ActivePage switch
+                {
+                    "calendar-tools" => new CalendarToolsPage(_date,Region),
+                    "personal-calendar" => new PersonalCalendarPage(_settingsPath is null
+                        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Chronikologio","personal-calendar.json")
+                        : _settingsPath+".personal.json",_date),
+                    _ => new AstronomyPage(_date,EffectiveSite)
+                };
                 _host.Controls.Add(_toolsPage); _toolsPage.BringToFront();
             }
             _rail.Checked = ActivePage;
@@ -222,6 +230,7 @@ public sealed class MainWindow : Form
             case Keys.Control | Keys.Oemcomma: ShowSettings(); return true;
             case Keys.Control | Keys.D1: OpenPage("calendar-tools"); return true;
             case Keys.Control | Keys.D2: OpenPage("astronomy"); return true;
+            case Keys.Control | Keys.D3: OpenPage("personal-calendar"); return true;
             case Keys.Control | Keys.F:
             case Keys.Control | Keys.K: OpenPage("today"); _searchBar.Focus(); return true;
             default: return false;
