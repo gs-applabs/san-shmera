@@ -8,7 +8,7 @@ namespace Chronikologio.UI;
 public sealed class HistoryCatalogPage : TimeToolsPage
 {
     private readonly HistoryCatalog _catalog;
-    private readonly TextBox _query=new(){Width=220,MaxLength=150}, _from=new(){Width=75,MaxLength=6}, _to=new(){Width=75,MaxLength=6};
+    private readonly TextBox _query=new(){Width=220,MaxLength=300}, _from=new(){Width=75,MaxLength=6}, _to=new(){Width=75,MaxLength=6};
     private readonly FlatComboBox _kind=new(){Width=145,Height=32};
     private readonly FlatComboBox _region=new(){Width=210,Height=32};
     private readonly string[] _regions;
@@ -45,6 +45,11 @@ public sealed class HistoryCatalogPage : TimeToolsPage
         var detail=Button(T("Ανάγνωση","Read"),105);
         var copyId=Button(T("Αντιγραφή ID","Copy ID"),135);
         Add(Row(_previous,_next,detail,copyId),48);
+        var copyLink=Button(T("Αντιγραφή συνδέσμου","Copy entry link"),175);
+        var sources=Button(T("Πηγές","Sources"),110);
+        Add(Row(copyLink,sources),48);
+        copyLink.Click+=(_,_)=>CopyLink();
+        sources.Click+=(_,_)=>ShowSources();
         copyId.Click+=(_,_)=>CopyId();
         Add(_status,42);
         AddLabel(T("Αρνητικό έτος = π.Χ. Κενά έτη = ετήσιες μνήμες. Τα πρόσωπα δεν διαθέτουν ανεξάρτητη κατάσταση επαλήθευσης στο υπάρχον σχήμα.","Negative year = BCE. Missing year = annual observance. Existing person records have no independent verification field."),60,"muted");
@@ -89,6 +94,15 @@ public sealed class HistoryCatalogPage : TimeToolsPage
             _list.Items.Clear();_previous.Enabled=_next.Enabled=false;
             _status.Text=T("Μη έγκυρο εύρος ετών.","Invalid year range.");return;
         }
+        if(HistoryLink.TryParse(_query.Text,out var id))
+        {
+            var entry=_catalog.FindById(id);
+            _list.Items.Clear();_offset=0;_previous.Enabled=_next.Enabled=false;
+            if(entry is null){_status.Text=T("Δεν βρέθηκε το συγκεκριμένο αναγνωριστικό.","Entry identifier not found.");return;}
+            _list.Items.Add(new ListViewItem(new[]{DateLabel(entry),entry.Title,KindName(entry.Kind),Evidence(entry.Status)}){Tag=entry});
+            _list.Items[0].Selected=true;
+            _status.Text=T("Ακριβής σύνδεσμος (ανεξάρτητα από τα φίλτρα).","Exact entry link (regardless of filters).");return;
+        }
         var result=_catalog.Search(_query.Text,Kinds[Math.Clamp(_kind.SelectedIndex,0,Kinds.Length-1)],from,to,_verified.Checked,offset,PageSize,_regions[Math.Clamp(_region.SelectedIndex,0,_regions.Length-1)]);
         if(offset>0 && offset>=result.Total){RefreshPage(0);return;}
         _offset=offset;
@@ -117,6 +131,18 @@ public sealed class HistoryCatalogPage : TimeToolsPage
         if(_list.SelectedItems.Count!=1||_list.SelectedItems[0].Tag is not HistoryCatalog.Entry e)return;
         try { Clipboard.SetText(e.Key); _status.Text=T("Το αναγνωριστικό αντιγράφηκε.","Entry ID copied."); }
         catch(System.Runtime.InteropServices.ExternalException) { _status.Text=T("Το πρόχειρο δεν είναι διαθέσιμο.","Clipboard unavailable."); }
+    }
+    private void CopyLink()
+    {
+        if(_list.SelectedItems.Count!=1||_list.SelectedItems[0].Tag is not HistoryCatalog.Entry e)return;
+        if(!HistoryLink.IsValidId(e.Key)){_status.Text=T("Μη υποστηριζόμενο αναγνωριστικό.","Unsupported identifier.");return;}
+        try { Clipboard.SetText(HistoryLink.Create(e.Key));_status.Text=T("Ο σύνδεσμος αντιγράφηκε. Επικολλήστε τον στην αναζήτηση της ιστορικής βιβλιοθήκης.","Entry link copied. Paste into historical library search."); }
+        catch(System.Runtime.InteropServices.ExternalException){_status.Text=T("Το πρόχειρο δεν είναι διαθέσιμο.","Clipboard unavailable.");}
+    }
+    private void ShowSources()
+    {
+        if(_list.SelectedItems.Count!=1||_list.SelectedItems[0].Tag is not HistoryCatalog.Entry e)return;
+        HistorySourcesDialog.ShowFor(FindForm(),e);
     }
     private void Read()
     {
