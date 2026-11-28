@@ -43,7 +43,9 @@ public sealed class HistoryCatalogPage : TimeToolsPage
         _previous=Button(T("Προηγούμενα","Previous"),125);
         _next=Button(T("Επόμενα","Next"),125);
         var detail=Button(T("Ανάγνωση","Read"),105);
-        Add(Row(_previous,_next,detail),48);
+        var copyId=Button(T("Αντιγραφή ID","Copy ID"),135);
+        Add(Row(_previous,_next,detail,copyId),48);
+        copyId.Click+=(_,_)=>CopyId();
         Add(_status,42);
         AddLabel(T("Αρνητικό έτος = π.Χ. Κενά έτη = ετήσιες μνήμες. Τα πρόσωπα δεν διαθέτουν ανεξάρτητη κατάσταση επαλήθευσης στο υπάρχον σχήμα.","Negative year = BCE. Missing year = annual observance. Existing person records have no independent verification field."),60,"muted");
         apply.Click+=(_,_)=>RefreshPage(0);
@@ -109,6 +111,12 @@ public sealed class HistoryCatalogPage : TimeToolsPage
         if(questions.Count==0)
         { _status.Text=T("Δεν υπάρχουν αρκετά επαληθευμένα γεγονότα με πηγές για κουίζ.","Not enough verified events with sources for a quiz.");return; }
         HistoryQuizDialog.ShowFor(FindForm(),questions);
+    }
+    private void CopyId()
+    {
+        if(_list.SelectedItems.Count!=1||_list.SelectedItems[0].Tag is not HistoryCatalog.Entry e)return;
+        try { Clipboard.SetText(e.Key); _status.Text=T("Το αναγνωριστικό αντιγράφηκε.","Entry ID copied."); }
+        catch(System.Runtime.InteropServices.ExternalException) { _status.Text=T("Το πρόχειρο δεν είναι διαθέσιμο.","Clipboard unavailable."); }
     }
     private void Read()
     {
