@@ -16,6 +16,28 @@ public sealed class TimeToolsTests
         Assert.Equal(date, CalendarTools.ToGregorian(system,cy,cm,cd));
     }
 
+    [Theory]
+    [InlineData("01/01/0001",1,1,1)]
+    [InlineData("1582-10-04",1582,10,4)]
+    [InlineData("29/02/1600",1600,2,29)]
+    [InlineData("31/12/9999",9999,12,31)]
+    public void HistoricalCivilDatesAreParsedWithoutNativePickerLimits(string input,int year,int month,int day)
+    {
+        Assert.True(CalendarTools.TryParseCivilDate(input,out var parsed));
+        Assert.Equal(new DateOnly(year,month,day),parsed);
+    }
+
+    [Theory]
+    [InlineData("29/02/1700")]
+    [InlineData("31/04/1600")]
+    [InlineData("1/1/1")]
+    [InlineData("0000-01-01")]
+    [InlineData("10000-01-01")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void InvalidCivilDatesAreNotSilentlyCorrected(string? input)
+        => Assert.False(CalendarTools.TryParseCivilDate(input,out _));
+
     [Fact]
     public void DateIntervalsAndLeapAnniversaries()
     {
