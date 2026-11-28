@@ -58,6 +58,11 @@ public sealed class PersonalCalendarPage : TimeToolsPage
         Add(_list,260);
         _export = Button(T("Εξαγωγή επόμενων σε ICS","Export upcoming to ICS"),225);
         Add(Row(_export),48);
+        var backup = Button(T("Αντίγραφο JSON","JSON backup"),155);
+        var import = Button(T("Συγχώνευση JSON","Merge JSON"),170);
+        Add(Row(backup,import),48);
+        backup.Click += (_,_) => Backup();
+        import.Click += (_,_) => Import();
         Add(_status,56);
         AddLabel(T("Τα δεδομένα αποθηκεύονται σε τοπικό αρχείο JSON, χωρίς κρυπτογράφηση. Η εξαγωγή ICS περιέχει τίτλους και ημερομηνίες, όχι σημειώσεις. Η 29/2 επαναλαμβάνεται 28/2 σε κοινό έτος.",
             "Data is stored in a local unencrypted JSON file. ICS exports titles and dates, not notes. Feb 29 recurs on Feb 28 in common years."),72,"muted");
@@ -154,6 +159,38 @@ public sealed class PersonalCalendarPage : TimeToolsPage
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException)
         { _status.Text = T("Δεν αποθηκεύτηκε. Ανανεώστε και δοκιμάστε ξανά. ","Not saved. Reload and retry. ")+ex.Message; }
+    }
+
+    private void Backup()
+    {
+        if (_snapshot is null) return;
+        using var picker = new SaveFileDialog { Filter="JSON (*.json)|*.json",FileName="personal-backup-"+DateTime.Now.ToString("yyyyMMdd-HHmmss")+".json",OverwritePrompt=true };
+        if (picker.ShowDialog(FindForm()) != DialogResult.OK) return;
+        try
+        {
+            _store.WriteBackup(picker.FileName);
+            _status.Text=T("Δημιουργήθηκε μη κρυπτογραφημένο αντίγραφο με σημειώσεις.","Unencrypted backup including notes created.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException or ArgumentException)
+        { _status.Text=T("Αποτυχία αντιγράφου: ","Backup failed: ")+ex.Message; }
+    }
+
+    private void Import()
+    {
+        if (_snapshot is null) return;
+        using var picker = new OpenFileDialog { Filter="JSON (*.json)|*.json",CheckFileExists=true,Multiselect=false };
+        if (picker.ShowDialog(FindForm()) != DialogResult.OK) return;
+        if (MessageBox.Show(FindForm(),T("Προσθήκη νέων εγγραφών από το αντίγραφο; Οι υπάρχουσες δεν αντικαθίστανται.","Add new entries from the backup? Existing records will not be overwritten."),
+            T("Συγχώνευση","Merge"),MessageBoxButtons.YesNo,MessageBoxIcon.Question) != DialogResult.Yes) return;
+        try
+        {
+            var result=_store.MergeBackup(picker.FileName,_snapshot.Revision);
+            _snapshot=result.Snapshot;
+            ClearEditor(); RefreshList();
+            _status.Text=T("Προστέθηκαν: ","Added: ")+result.Added+T(" · Ίδιες: "," · Identical: ")+result.Identical+T(" · Συγκρούσεις (διατηρήθηκαν οι τοπικές): "," · Conflicts (local kept): ")+result.Conflicts;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException or ArgumentException)
+        { _status.Text=T("Δεν έγινε εισαγωγή: ","Import failed: ")+ex.Message; }
     }
 
     private void Export()
