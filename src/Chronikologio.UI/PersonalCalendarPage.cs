@@ -59,7 +59,9 @@ public sealed class PersonalCalendarPage : TimeToolsPage
         Add(Row(_export),48);
         var backup = Button(T("Αντίγραφο JSON","JSON backup"),155);
         var import = Button(T("Συγχώνευση JSON","Merge JSON"),170);
-        Add(Row(backup,import),48);
+        var importIcs = Button(T("Εισαγωγή ICS","Import ICS"),150);
+        Add(Row(backup,import,importIcs),48);
+        importIcs.Click += (_,_) => ImportIcs();
         backup.Click += (_,_) => Backup();
         import.Click += (_,_) => Import();
         Add(_status,56);
@@ -189,6 +191,30 @@ public sealed class PersonalCalendarPage : TimeToolsPage
             _status.Text=T("Προστέθηκαν: ","Added: ")+result.Added+T(" · Ίδιες: "," · Identical: ")+result.Identical+T(" · Συγκρούσεις (διατηρήθηκαν οι τοπικές): "," · Conflicts (local kept): ")+result.Conflicts;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException or ArgumentException)
+        { _status.Text=T("Δεν έγινε εισαγωγή: ","Import failed: ")+ex.Message; }
+    }
+
+    private void ImportIcs()
+    {
+        if (_snapshot is null) return;
+        using var picker = new OpenFileDialog { Filter="iCalendar (*.ics)|*.ics",CheckFileExists=true,Multiselect=false };
+        if (picker.ShowDialog(FindForm()) != DialogResult.OK) return;
+        try
+        {
+            var preview=PersonalIcsImport.Read(picker.FileName);
+            var message=T("Μονοήμερες ολοήμερες εγγραφές: ","Single-day all-day entries: ")+preview.Events.Count+
+                T(" · Μη υποστηριζόμενες: "," · Unsupported: ")+preview.Skipped;
+            if(preview.Events.Count==0){_status.Text=message;return;}
+            if(MessageBox.Show(FindForm(),message+"\n\n"+T("Να εισαχθούν μόνο οι τίτλοι και ημερομηνίες; Οι υπάρχουσες εγγραφές διατηρούνται. Δεν εισάγονται σημειώσεις, επαναλήψεις, ώρες ή ειδοποιήσεις.",
+                "Import titles and dates only? Existing entries are kept. Notes, recurrence, times and alarms are not imported."),
+                T("Εισαγωγή ICS","ICS import"),MessageBoxButtons.YesNo,MessageBoxIcon.Question)!=DialogResult.Yes)return;
+            var result=_store.MergeIcs(preview,_snapshot.Revision);
+            _snapshot=result.Snapshot;
+            ClearEditor();RefreshList();
+            _status.Text=T("Προστέθηκαν: ","Added: ")+result.Added+T(" · Ίδιες: "," · Identical: ")+result.Identical+
+                T(" · Συγκρούσεις: "," · Conflicts: ")+result.Conflicts+T(" · Παραλείφθηκαν: "," · Skipped: ")+preview.Skipped;
+        }
+        catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException or ArgumentException)
         { _status.Text=T("Δεν έγινε εισαγωγή: ","Import failed: ")+ex.Message; }
     }
 
