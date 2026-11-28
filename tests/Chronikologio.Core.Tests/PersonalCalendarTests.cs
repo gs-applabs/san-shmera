@@ -46,10 +46,15 @@ public sealed class PersonalCalendarTests : IDisposable
     public void BackupMergePreservesLocalConflictsAndDoesNotDuplicateEntries()
     {
         var store=new PersonalCalendar(FileName);
+        Assert.Throws<InvalidOperationException>(()=>store.WriteUpcomingIcs(FileName,new(2026,1,1),DateTime.UtcNow));
         var original=Entry(new(2026,1,1));
         var state=store.Save("",new[]{original});
         var backup=Path.Combine(_root,"backup.json");
         store.WriteBackup(backup);
+        var ics=Path.Combine(_root,"export.ics");
+        store.WriteUpcomingIcs(ics,new(2026,1,1),DateTime.UtcNow);
+        Assert.Contains("CLASS:PRIVATE",File.ReadAllText(ics));
+        Assert.Throws<IOException>(()=>store.WriteUpcomingIcs(ics,new(2026,1,1),DateTime.UtcNow));
         Assert.Throws<IOException>(()=>store.WriteBackup(backup));
         Assert.Throws<InvalidOperationException>(()=>store.WriteBackup(FileName));
         var other=new PersonalCalendar(backup);
