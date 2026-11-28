@@ -39,10 +39,14 @@ public static class CalendarTools
     }
     public static DateOnly NextAnniversary(DateOnly original, DateOnly reference)
     {
+        return TryNextAnniversary(original, reference) ?? throw new ArgumentOutOfRangeException(nameof(reference), "No future anniversary in the supported date range.");
+    }
+    public static DateOnly? TryNextAnniversary(DateOnly original, DateOnly reference)
+    {
         var year = Math.Max(original.Year, reference.Year);
         DateOnly At(int y) => new(y, original.Month, Math.Min(original.Day, DateTime.DaysInMonth(y, original.Month)));
         var result = At(year);
-        return result >= reference ? result : At(checked(year + 1));
+        return result >= reference ? result : year == 9999 ? null : At(year + 1);
     }
     public static (int Year, int Week) IsoWeek(DateOnly date)
     {
