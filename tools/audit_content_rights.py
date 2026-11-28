@@ -86,8 +86,31 @@ def audit(root):
             saint_rows += 1
             if "Ο βίος δεν έχει ακόμη γραφτεί" in line:
                 saint_placeholders += 1
+    # A source may be referenced by multiple local images. Review the source once,
+    # but preserve every file/record and never infer approval from a matching URL.
+    source_queue = {}
+    for issue in issues:
+        if issue.get("reason") not in {"creator-unknown-needs-review", "unrecognized-or-incomplete-rights-metadata", "source-host-needs-review"}:
+            continue
+        url = issue.get("sourceUrl") or ""
+        key = url or "missing-source:" + issue.get("file", issue["where"])
+        item = source_queue.setdefault(key, {"sourceUrl": url, "files": set(), "reasons": set(), "declaredLicenses": set(), "status": "pending", "priority": "standard"})
+        if issue.get("file"):
+            item["files"].add(issue["file"])
+        item["reasons"].add(issue["reason"])
+        label = issue.get("declaredLicense", "")
+        item["declaredLicenses"].add(label)
+        if issue["reason"] != "creator-unknown-needs-review" or label.casefold().startswith("cc by"):
+            item["priority"] = "high"
+    review_queue = []
+    for key, item in sorted(source_queue.items()):
+        review_queue.append({**item, "files": sorted(item["files"]), "reasons": sorted(item["reasons"]), "declaredLicenses": sorted(item["declaredLicenses"])})
+    review_queue.sort(key=lambda i: (i["priority"] != "high", i["sourceUrl"], i["files"]))
     return {
         "status": "inventory-only-not-legal-clearance",
+        "sourceReviewQueueCount": len(review_queue),
+        "sourceReviewHighPriorityCount": sum(i["priority"] == "high" for i in review_queue),
+        "sourceReviewQueue": review_queue,
         "imageFiles": len(actual),
         "uniqueDeclaredImagePaths": len(declarations),
         "newlyMatchedJsonImagePaths": len(set(declarations) - tsv_paths_before_json),
@@ -122,4 +145,4 @@ if __name__ == "__main__":
     report = audit(args.data)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({k: v for k,v in report.items() if k != "issues"}, ensure_ascii=False, indent=2))
+    print(json.dumps({k: v for k,v in report.items() if k not in {"issues", "sourceReviewQueue"}}, ensure_ascii=False, indent=2))
