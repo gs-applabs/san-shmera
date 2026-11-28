@@ -61,11 +61,12 @@ public sealed class HistoryCatalog
     {
         if(count<1||count>20) throw new ArgumentOutOfRangeException(nameof(count));
         if(fromYear.HasValue&&toYear.HasValue&&fromYear>toYear) throw new ArgumentException("Reversed year range.");
-        var candidates=_entries.Select(x=>x.Value).Where(e=>e.Kind=="event"&&e.Status==Verification.Verified&&
-            e.Year is int y && y!=0 && !string.IsNullOrWhiteSpace(e.Title) &&
-            e.Sources.Any(s=>Uri.TryCreate(s.Url,UriKind.Absolute,out var uri)&&uri.Scheme=="https"&&string.IsNullOrEmpty(uri.UserInfo)))
+        var candidates=_entries.Select(x=>x.Value).Where(e=>e.Kind=="event"&&!string.IsNullOrWhiteSpace(e.Title))
             .GroupBy(e=>TextNorm.Fold(e.Title),StringComparer.Ordinal)
-            .Where(g=>g.Select(e=>e.Year).Distinct().Count()==1).Select(g=>g.First()).ToArray();
+            .Where(g=>g.Select(e=>e.Year).Distinct().Count()==1)
+            .Select(g=>g.FirstOrDefault(e=>e.Status==Verification.Verified&&e.Year is int y&&y!=0&&
+                e.Sources.Any(s=>Uri.TryCreate(s.Url,UriKind.Absolute,out var uri)&&uri.Scheme=="https"&&string.IsNullOrEmpty(uri.UserInfo))))
+            .OfType<Entry>().ToArray();
         var pool=candidates.Select(e=>e.Year!.Value).Distinct().ToArray();
         if(pool.Length<4)return Array.Empty<QuizQuestion>();
         var eligible=candidates.Where(e=>(string.IsNullOrEmpty(region)||e.Region==region)&&
