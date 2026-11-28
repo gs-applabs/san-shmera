@@ -81,6 +81,10 @@ public abstract class TimeToolsPage : Panel
 public sealed class CalendarToolsPage : TimeToolsPage
 {
     private readonly DateTimePicker _first, _second;
+    private readonly TextBox _firstText = new() { Width = 135, MaxLength = 10 }, _secondText = new() { Width = 135, MaxLength = 10 };
+    private readonly CheckBox _manual = new() { AutoSize = true };
+    private readonly Label _dateStatus = new() { TextAlign = ContentAlignment.MiddleLeft, Tag = "muted" };
+    private bool _changingMode;
     private readonly FlatComboBox _system = new() { Width = 170, Height = 32 };
     private readonly NumericUpDown _year = Number(1, 9999, 2026), _month = Number(1, 13, 1, 50), _day = Number(1, 31, 1, 50);
     private readonly ListView _conversions, _intervals;
@@ -99,7 +103,17 @@ public sealed class CalendarToolsPage : TimeToolsPage
         _region = region;
         _first = Picker(selected); _second = Picker(DateOnly.FromDateTime(DateTime.Today));
         _first.AccessibleName = T("Αρχική ημερομηνία", "Start date"); _second.AccessibleName = T("Τελική ημερομηνία", "End date");
-        Add(Row(Field(T("Από", "From")), _first, Field(T("Έως", "To"), 48), _second), 50);
+        _firstText.AccessibleName = T("Αρχική ημερομηνία (χειροκίνητα)", "Start date (manual)");
+        _secondText.AccessibleName = T("Τελική ημερομηνία (χειροκίνητα)", "End date (manual)");
+        _firstText.Text = Civil(selected);
+        _secondText.Text = Civil(DateOnly.FromDateTime(DateTime.Today));
+        _manual.Text = T("Χειροκίνητη ημερομηνία (0001–9999)", "Manual date (0001–9999)");
+        _manual.Checked = selected.Year < 1753 || selected.Year > 9998;
+        _first.Visible = _second.Visible = !_manual.Checked;
+        _firstText.Visible = _secondText.Visible = _manual.Checked;
+        Add(Row(Field(T("Από", "From")), _first, _firstText, Field(T("Έως", "To"), 48), _second, _secondText), 50);
+        Add(Row(_manual), 35);
+        Add(_dateStatus, 34);
         _conversions = Table((T("Ημερολόγιο", "Calendar"), 280), (T("Ημερομηνία (Ε-Μ-Η)", "Date (Y-M-D)"), 230));
         Add(_conversions, 174);
         _intervals = Table((T("Υπολογισμός", "Calculation"), 280), (T("Αποτέλεσμα", "Result"), 300));
@@ -118,7 +132,11 @@ public sealed class CalendarToolsPage : TimeToolsPage
         Add(Row(_system, _year, _month, _day, convert), 50);
         Add(_reverse, 34);
         AddLabel(T("Αναδρομική εφαρμογή ημερολογίων: όχι ιστορικές ημερομηνίες υιοθέτησης. Το αριθμητικό ισλαμικό μπορεί να διαφέρει από παρατηρήσεις Σελήνης. Στις επετείους 29/2 χρησιμοποιείται 28/2 σε κοινό έτος.", "Proleptic calendars, not historical adoption dates. Tabular Islamic dates may differ from observations. Feb 29 anniversaries use Feb 28 in common years."), 65, "muted");
-        _first.ValueChanged += (_, _) => RefreshResults(); _second.ValueChanged += (_, _) => RefreshResults();
+        _first.ValueChanged += (_, _) => { if (!_changingMode) RefreshResults(); };
+        _second.ValueChanged += (_, _) => { if (!_changingMode) RefreshResults(); };
+        _firstText.TextChanged += (_, _) => { if (_manual.Checked && !_changingMode) RefreshResults(); };
+        _secondText.TextChanged += (_, _) => { if (_manual.Checked && !_changingMode) RefreshResults(); };
+        _manual.CheckedChanged += (_, _) => ChangeDateMode();
         convert.Click += (_, _) =>
         {
             try { _reverse.Text = CalendarTools.ToGregorian(CalendarTools.Systems[Math.Max(0,_system.SelectedIndex)], (int)_year.Value,(int)_month.Value,(int)_day.Value).ToString("dd/MM/yyyy"); }
@@ -126,9 +144,59 @@ public sealed class CalendarToolsPage : TimeToolsPage
         };
         RefreshResults(); Restyle();
     }
+    private static string Civil(DateOnly date) => date.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+    private void ChangeDateMode()
+    {
+        if (_changingMode) return;
+        _changingMode = true;
+        try
+        {
+            if (_manual.Checked)
+            {
+                _firstText.Text = Civil(DateOnly.FromDateTime(_first.Value));
+                _secondText.Text = Civil(DateOnly.FromDateTime(_second.Value));
+            }
+            else
+            {
+                if (!CalendarTools.TryParseCivilDate(_firstText.Text,out var a) ||
+                    !CalendarTools.TryParseCivilDate(_secondText.Text,out var b) ||
+                    a.Year is < 1753 or > 9998 || b.Year is < 1753 or > 9998)
+                {
+                    _manual.Checked = true;
+                    _dateStatus.Text = T("Το ημερολόγιο επιλογής δέχεται μόνο 1753–9998. Διορθώστε τις ημερομηνίες ή παραμείνετε στη χειροκίνητη εισαγωγή.", "The date picker accepts 1753–9998 only. Correct the dates or keep manual entry.");
+                    return;
+                }
+                _first.Value = a.ToDateTime(TimeOnly.MinValue);
+                _second.Value = b.ToDateTime(TimeOnly.MinValue);
+            }
+            _first.Visible = _second.Visible = !_manual.Checked;
+            _firstText.Visible = _secondText.Visible = _manual.Checked;
+        }
+        finally { _changingMode = false; }
+        RefreshResults();
+    }
     private void RefreshResults()
     {
-        var a = DateOnly.FromDateTime(_first.Value); var b = DateOnly.FromDateTime(_second.Value);
+        if (_changingMode) return;
+        DateOnly a,b;
+        if (_manual.Checked)
+        {
+            if (!CalendarTools.TryParseCivilDate(_firstText.Text,out a) || !CalendarTools.TryParseCivilDate(_secondText.Text,out b))
+            {
+                Rows(_conversions, Array.Empty<string[]>());
+                Rows(_intervals, Array.Empty<string[]>());
+                _workdays.Text = "";
+                _dateStatus.Text = T("Μη έγκυρη ημερομηνία. Χρησιμοποιήστε ΗΗ/ΜΜ/ΕΕΕΕ ή ΕΕΕΕ-ΜΜ-ΗΗ.", "Invalid date. Use DD/MM/YYYY or YYYY-MM-DD.");
+                return;
+            }
+            _dateStatus.Text = T("Αναδρομικό Γρηγοριανό · 0001–9999 μ.Χ.", "Proleptic Gregorian · 0001–9999 CE");
+        }
+        else
+        {
+            a = DateOnly.FromDateTime(_first.Value);
+            b = DateOnly.FromDateTime(_second.Value);
+            _dateStatus.Text = "";
+        }
         Rows(_conversions, CalendarTools.Systems.Select(s =>
         {
             var d = CalendarTools.Convert(a, s);
