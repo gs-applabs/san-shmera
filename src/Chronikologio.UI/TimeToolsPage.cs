@@ -97,7 +97,7 @@ public sealed class CalendarToolsPage : TimeToolsPage
         T("Μετατροπές ημερομηνιών, χρονικές αποστάσεις και επέτειοι — χωρίς Internet.", "Offline calendar conversions, date intervals and anniversaries."))
     {
         _region = region;
-        _first = Picker(selected, 1753, 9999); _second = Picker(DateOnly.FromDateTime(DateTime.Today), 1753, 9999);
+        _first = Picker(selected); _second = Picker(DateOnly.FromDateTime(DateTime.Today));
         _first.AccessibleName = T("Αρχική ημερομηνία", "Start date"); _second.AccessibleName = T("Τελική ημερομηνία", "End date");
         Add(Row(Field(T("Από", "From")), _first, Field(T("Έως", "To"), 48), _second), 50);
         _conversions = Table((T("Ημερολόγιο", "Calendar"), 280), (T("Ημερομηνία (Ε-Μ-Η)", "Date (Y-M-D)"), 230));
