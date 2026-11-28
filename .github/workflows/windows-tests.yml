@@ -29,7 +29,10 @@ jobs:
 
       - name: Lossless content footprint and integrity audit
         shell: pwsh
-        run: python tools/audit_data_footprint.py
+        run: |
+          python tools/test_pack_media.py
+          if ($LASTEXITCODE -ne 0) { throw "Pack safety regression failed" }
+          python tools/audit_data_footprint.py
 
       - name: Inventory declared content rights (not legal clearance)
         shell: pwsh
