@@ -5,10 +5,18 @@ namespace Chronikologio.Core.Tests;
 
 public sealed class HistoryCatalogTests
 {
+    private static string FindData()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null && !Directory.Exists(Path.Combine(dir,"data"))) dir = Path.GetDirectoryName(dir);
+        return Path.Combine(dir ?? throw new DirectoryNotFoundException("data folder not found"),"data");
+    }
+
     [Fact]
     public void ExistingLibraryIsProjectedWithoutInventingDatesOrDuplicates()
     {
-        var store=DayStore.Load(Path.Combine(AppContext.BaseDirectory,"data"));
+        var store=DayStore.Load(FindData());
+        Assert.Empty(store.Errors);
         var catalog=new HistoryCatalog(store,"el");
         var first=catalog.Search("","all",null,null,false);
         Assert.True(first.Total>100);
@@ -34,7 +42,8 @@ public sealed class HistoryCatalogTests
     [Fact]
     public void QuizUsesOnlyVerifiedDatedEventsAndDistinctAnswerYears()
     {
-        var store=DayStore.Load(Path.Combine(AppContext.BaseDirectory,"data"));
+        var store=DayStore.Load(FindData());
+        Assert.Empty(store.Errors);
         var catalog=new HistoryCatalog(store,"el");
         var questions=catalog.CreateYearQuiz(10,new Random(42));
         Assert.InRange(questions.Count,1,10);
