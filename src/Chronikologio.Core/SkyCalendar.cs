@@ -84,6 +84,63 @@ public static class SkyCalendar
         return new(utc, horizon.altitude);
     }
 
+    public sealed record VisibilityWindow(DateTime BeginUtc, DateTime EndUtc);
+    public sealed record LunarPhase(string Kind, DateTime BeginUtc, DateTime EndUtc, IReadOnlyList<VisibilityWindow> AboveHorizon);
+    public sealed record LocalLunar(string Kind, DateTime PeakUtc, IReadOnlyList<LunarPhase> Phases);
+
+    /// <summary>Geometric visibility of the Moon's centre above a flat horizon (0 degrees,
+    /// no refraction). Phases are approximate symmetric intervals from the engine's semi-durations.
+    /// The windows are nested, not additive. Weather, daylight and terrain are not modelled.</summary>
+    public static IReadOnlyList<LocalLunar> LocalLunarForYear(int year, Site site, CancellationToken ct = default)
+    {
+        Validate(year);
+        ct.ThrowIfCancellationRequested();
+        var start = new DateTime(year,1,1,0,0,0,DateTimeKind.Utc);
+        var end = start.AddYears(1);
+        var observer = new Observer(site.Latitude,site.Longitude,0);
+        var result = new List<LocalLunar>();
+        double Altitude(DateTime utc)
+        {
+            var time = Time(utc);
+            var eq = Astronomy.Equator(Body.Moon,time,observer,EquatorEpoch.OfDate,Aberration.Corrected);
+            return Astronomy.Horizon(time,observer,eq.ra,eq.dec,Refraction.None).altitude;
+        }
+        foreach (var eclipse in Astronomy.LunarEclipsesAfter(Time(start)))
+        {
+            ct.ThrowIfCancellationRequested();
+            var peak = eclipse.peak.ToUtcDateTime();
+            if (peak >= end) break;
+            if (peak < start) continue;
+            var phases = new List<LunarPhase>();
+            void AddPhase(string kind,double minutes)
+            {
+                if (minutes <= 0) return;
+                ct.ThrowIfCancellationRequested();
+                var begin = peak.AddMinutes(-minutes);
+                var finish = peak.AddMinutes(minutes);
+                var cuts = new List<DateTime> { begin,finish };
+                foreach (var direction in new[] { Direction.Rise,Direction.Set })
+                {
+                    var crossing = Astronomy.SearchAltitude(Body.Moon,observer,direction,Time(begin),(finish-begin).TotalDays,0)?.ToUtcDateTime();
+                    if (crossing is { } hit && hit > begin && hit < finish) cuts.Add(hit);
+                }
+                cuts.Sort();
+                var visible = new List<VisibilityWindow>();
+                for (int i=1;i<cuts.Count;i++)
+                {
+                    var midpoint = cuts[i-1].AddTicks((cuts[i]-cuts[i-1]).Ticks/2);
+                    if (Altitude(midpoint) > 0) visible.Add(new(cuts[i-1],cuts[i]));
+                }
+                phases.Add(new(kind,begin,finish,visible.AsReadOnly()));
+            }
+            AddPhase("penumbral",eclipse.sd_penum);
+            AddPhase("partial",eclipse.sd_partial);
+            AddPhase("total",eclipse.sd_total);
+            result.Add(new(eclipse.kind.ToString(),peak,phases.AsReadOnly()));
+        }
+        return result.AsReadOnly();
+    }
+
     public static IReadOnlyList<Event> ForYear(int year, CancellationToken ct = default)
     {
         Validate(year);
@@ -97,6 +154,7 @@ public static class SkyCalendar
             var utc = time.ToUtcDateTime();
             if (utc >= start && utc < end) events.Add(new(kind, utc, detail));
         }
+        ct.ThrowIfCancellationRequested();
         var s = Astronomy.Seasons(year);
         Add("march", s.mar_equinox); Add("june", s.jun_solstice);
         Add("september", s.sep_equinox); Add("december", s.dec_solstice);
@@ -129,8 +187,9 @@ public static class SkyCalendar
                     ct.ThrowIfCancellationRequested();
                     var hit = Astronomy.SearchRelativeLongitude(planet, angle, cursor);
                     if (hit.ToUtcDateTime() >= end) break;
-                    var kind = angle == 180 ? "superior-conjunction" :
-                        planet is Body.Mercury or Body.Venus ? "inferior-conjunction" : "opposition";
+                    var inner = planet is Body.Mercury or Body.Venus;
+                    var kind = angle == 180 ? (inner ? "superior-conjunction" : "solar-conjunction") :
+                        inner ? "inferior-conjunction" : "opposition";
                     Add(kind, hit, planet.ToString());
                     cursor = hit.AddDays(1);
                 }
