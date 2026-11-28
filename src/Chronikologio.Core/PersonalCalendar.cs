@@ -19,11 +19,13 @@ public sealed class PersonalCalendar
     private readonly string _path;
     public PersonalCalendar(string path) => _path = Path.GetFullPath(path);
 
-    public PersonalCalendarSnapshot Load()
+    public PersonalCalendarSnapshot Load() => ReadSnapshot(_path, true);
+
+    private static PersonalCalendarSnapshot ReadSnapshot(string path, bool allowMissing)
     {
         try
         {
-            using var input = new FileStream(_path,FileMode.Open,FileAccess.Read,FileShare.Read | FileShare.Delete);
+            using var input = new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read | FileShare.Delete);
             if (input.Length > MaxBytes) throw new InvalidDataException("Personal calendar exceeds its size limit.");
             var bytes = new byte[(int)input.Length];
             input.ReadExactly(bytes);
@@ -32,8 +34,8 @@ public sealed class PersonalCalendar
             Validate(doc.Events);
             return new(doc.Revision,Array.AsReadOnly(doc.Events));
         }
-        catch (FileNotFoundException) { return new("",Array.Empty<PersonalEvent>()); }
-        catch (DirectoryNotFoundException) { return new("",Array.Empty<PersonalEvent>()); }
+        catch (FileNotFoundException) when (allowMissing) { return new("",Array.Empty<PersonalEvent>()); }
+        catch (DirectoryNotFoundException) when (allowMissing) { return new("",Array.Empty<PersonalEvent>()); }
         catch (JsonException ex) { throw new InvalidDataException("Personal calendar cannot be read; original preserved.",ex); }
     }
 
@@ -75,6 +77,46 @@ public sealed class PersonalCalendar
             try { File.Delete(temp); } catch (IOException) { } catch (UnauthorizedAccessException) { }
         }
         return new(revision,Array.AsReadOnly(items));
+    }
+
+    /// <summary>Explicit backup contains notes and is not encrypted. Never overwrite the live store.</summary>
+    public void WriteBackup(string destination)
+    {
+        destination = Path.GetFullPath(destination);
+        if (string.Equals(destination,_path,StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(destination,_path+".lock",StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Choose a separate backup file.");
+        var snapshot = Load();
+        var data = JsonSerializer.SerializeToUtf8Bytes(new Document(1,
+            string.IsNullOrEmpty(snapshot.Revision) ? Guid.NewGuid().ToString("N") : snapshot.Revision,
+            snapshot.Events.ToArray()),JsonOptions);
+        if (data.Length > MaxBytes) throw new InvalidDataException("Backup exceeds its size limit.");
+        // Create-new: never destroy an existing backup or another file.
+        using var output = new FileStream(destination,FileMode.CreateNew,FileAccess.Write,FileShare.None);
+        output.Write(data); output.Flush(true);
+    }
+
+    /// <summary>Validate all imported records before saving. Existing local entries win
+    /// on conflicting IDs, identical records are skipped; no deletion or replacement.</summary>
+    public sealed record ImportResult(PersonalCalendarSnapshot Snapshot,int Added,int Identical,int Conflicts);
+    public ImportResult MergeBackup(string source,string expectedRevision)
+    {
+        var incoming = ReadSnapshot(Path.GetFullPath(source),false);
+        var current = Load();
+        if (current.Revision != expectedRevision) throw new InvalidOperationException("Reload before importing.");
+        var items = current.Events.ToDictionary(x=>x.Id);
+        int added=0, identical=0, conflicts=0;
+        foreach (var e in incoming.Events)
+        {
+            if (items.TryGetValue(e.Id,out var prior))
+            {
+                if (prior == e) identical++; else conflicts++;
+            }
+            else { items.Add(e.Id,e); added++; }
+        }
+        // Save checks revision again under the lock.
+        var result = added == 0 ? current : Save(expectedRevision,items.Values);
+        return new(result,added,identical,conflicts);
     }
 
     /// <summary>Occurrences starting at reference, including today; yearly Feb 29 uses Feb 28 in common years.
