@@ -30,6 +30,15 @@ public sealed class TimeToolsTests
     }
 
     [Fact]
+    public void AnniversaryBeyondDateOnlyMaximumReturnsNoResult()
+    {
+        Assert.Null(CalendarTools.TryNextAnniversary(new DateOnly(2000,1,1),DateOnly.MaxValue));
+        Assert.Equal(DateOnly.MaxValue,CalendarTools.TryNextAnniversary(new DateOnly(2000,12,31),DateOnly.MaxValue));
+        Assert.Equal(new DateOnly(9999,2,28),CalendarTools.TryNextAnniversary(new DateOnly(2000,2,29),new DateOnly(9999,1,1)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => CalendarTools.NextAnniversary(new DateOnly(2000,1,1),DateOnly.MaxValue));
+    }
+
+    [Fact]
     public void AstronomyMatchesIndependentReferenceEvents()
     {
         // USNO seasons 2024, USNO primary phases Apr 2024, NASA eclipse Besselian elements.
