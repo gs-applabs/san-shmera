@@ -109,12 +109,12 @@ public sealed class PersonalCalendar
         Line("BEGIN:VCALENDAR"); Line("VERSION:2.0"); Line("PRODID:-//GS App Labs//Chronikologio//EN"); Line("CALSCALE:GREGORIAN");
         foreach (var x in occurrences.Take(MaxEvents))
         {
-            if (x.Date == DateOnly.MaxValue) continue; // RFC 5545 exclusive end cannot represent year 10000.
             string date = x.Date.ToString("yyyyMMdd",CultureInfo.InvariantCulture);
             Line("BEGIN:VEVENT"); Line("UID:"+x.Event.Id.ToString("N")+"-"+date+"@chronikologio.local");
             Line("DTSTAMP:"+utcNow.ToUniversalTime().ToString("yyyyMMdd'T'HHmmss'Z'",CultureInfo.InvariantCulture));
             Line("DTSTART;VALUE=DATE:"+date);
-            Line("DTEND;VALUE=DATE:"+x.Date.AddDays(1).ToString("yyyyMMdd",CultureInfo.InvariantCulture));
+            // RFC 5545 DATE without DTEND or DURATION defaults to one day, also at 9999-12-31.
+            if (x.Date != DateOnly.MaxValue) Line("DTEND;VALUE=DATE:"+x.Date.AddDays(1).ToString("yyyyMMdd",CultureInfo.InvariantCulture));
             Line("SUMMARY:"+Escape(x.Event.Title));
             if (includeNotes && x.Event.Notes.Length>0) Line("DESCRIPTION:"+Escape(x.Event.Notes));
             Line("CLASS:PRIVATE"); Line("END:VEVENT");
