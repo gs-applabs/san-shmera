@@ -91,9 +91,30 @@ public sealed class PersonalCalendar
             string.IsNullOrEmpty(snapshot.Revision) ? Guid.NewGuid().ToString("N") : snapshot.Revision,
             snapshot.Events.ToArray()),JsonOptions);
         if (data.Length > MaxBytes) throw new InvalidDataException("Backup exceeds its size limit.");
-        // Create-new: never destroy an existing backup or another file.
-        using var output = new FileStream(destination,FileMode.CreateNew,FileAccess.Write,FileShare.None);
-        output.Write(data); output.Flush(true);
+        WriteNewFile(destination,data);
+    }
+
+    /// <summary>Explicit export, without notes; refuses to overwrite any existing file.</summary>
+    public void WriteUpcomingIcs(string destination,DateOnly reference,DateTime utcNow)
+    {
+        var snapshot=Load();
+        WriteNewFile(Path.GetFullPath(destination),Encoding.UTF8.GetBytes(ExportIcs(Upcoming(snapshot.Events,reference),utcNow)));
+    }
+
+    private static void WriteNewFile(string destination,byte[] data)
+    {
+        if (File.Exists(destination)) throw new IOException("Destination already exists; choose a new file.");
+        var temp=destination+"."+Guid.NewGuid().ToString("N")+".tmp";
+        try
+        {
+            using (var stream=new FileStream(temp,FileMode.CreateNew,FileAccess.Write,FileShare.None))
+            { stream.Write(data);stream.Flush(true); }
+            File.Move(temp,destination,false);
+        }
+        finally
+        {
+            try { File.Delete(temp); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
     }
 
     /// <summary>Validate all imported records before saving. Existing local entries win
