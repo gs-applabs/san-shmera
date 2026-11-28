@@ -166,6 +166,13 @@ public sealed class PersonalCalendar
         return result.OrderBy(x=>x.Date).ThenBy(x=>x.Event.Title,StringComparer.CurrentCultureIgnoreCase).ToArray();
     }
 
+    public static IReadOnlyList<PersonalOccurrence> DueWithin(IEnumerable<PersonalEvent> events,DateOnly today,int daysAhead)
+    {
+        if(daysAhead<0||daysAhead>30)throw new ArgumentOutOfRangeException(nameof(daysAhead));
+        var last=DateOnly.FromDayNumber(Math.Min(DateOnly.MaxValue.DayNumber,today.DayNumber+daysAhead));
+        return Upcoming(events,today).Where(x=>x.Date<=last).ToArray();
+    }
+
     /// <summary>Export concrete all-day occurrences only, not a calendar subscription.
     /// Notes are excluded unless expressly requested; no network, alarms or recipients.</summary>
     public static string ExportIcs(IEnumerable<PersonalOccurrence> occurrences,DateTime utcNow,bool includeNotes=false)
