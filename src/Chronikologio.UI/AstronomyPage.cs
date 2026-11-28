@@ -12,6 +12,8 @@ public sealed class AstronomyPage : TimeToolsPage
     private readonly Label _status = new() { TextAlign = ContentAlignment.MiddleLeft, Tag = "muted" };
     private readonly FlatButton _calculate;
     private CancellationTokenSource? _work;
+    // Shared only by astronomy workspaces; other modules remain independent.
+    private static readonly SemaphoreSlim AnnualGate = new(1,1);
     public static string SiteName(string id) => id switch
     {
         "athens" => T("Αθήνα", "Athens"), "thessaloniki" => T("Θεσσαλονίκη", "Thessaloniki"),
@@ -100,6 +102,9 @@ public sealed class AstronomyPage : TimeToolsPage
         _status.Text = T("Υπολογισμός…", "Calculating…");
         try
         {
+            await AnnualGate.WaitAsync(cts.Token);
+            try
+            {
             var result = await Task.Run(() =>
             {
                 var events = SkyCalendar.ForYear(year, cts.Token);
@@ -147,6 +152,8 @@ public sealed class AstronomyPage : TimeToolsPage
                 Rows(_annual, result.Rows);
                 _status.Text = $"{year} · {SiteName(site.Id)} · {result.Count} " + T("παγκόσμια φαινόμενα", "global events");
             }
+            }
+            finally { AnnualGate.Release(); }
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)

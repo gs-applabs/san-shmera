@@ -24,6 +24,11 @@ public static class CalendarTools
         if (d < c.MinSupportedDateTime || d > c.MaxSupportedDateTime) return null;
         return new(system, c.GetYear(d), c.GetMonth(d), c.GetDayOfMonth(d));
     }
+    /// <summary>Strict Gregorian civil date entry, independent of OS locale and native picker limits.
+    /// No BCE, ambiguous short years, auto-correction or calendar adoption assumptions.</summary>
+    public static bool TryParseCivilDate(string? text, out DateOnly date)
+        => DateOnly.TryParseExact(text?.Trim(), new[] { "dd/MM/yyyy", "yyyy-MM-dd" },
+            CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
     public static DateOnly ToGregorian(string system, int year, int month, int day)
         => DateOnly.FromDateTime(Create(system).ToDateTime(year, month, day, 0, 0, 0, 0));
     public static Interval Between(DateOnly start, DateOnly end)

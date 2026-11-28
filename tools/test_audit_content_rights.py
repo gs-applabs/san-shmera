@@ -37,6 +37,9 @@ class RightsAuditTests(unittest.TestCase):
             unknown = next(x for x in report["issues"] if x["reason"] == "creator-unknown-needs-review")
             self.assertEqual(unknown["sourceUrl"],"https://commons.wikimedia.org/wiki/File:A.jpg")
             self.assertEqual(report["datasetRightsReview"][0]["status"],"permission-not-established")
+            self.assertEqual(report["sourceReviewQueueCount"],1)
+            self.assertEqual(report["sourceReviewQueue"][0]["status"],"pending")
+            self.assertEqual(report["sourceReviewQueue"][0]["files"],["a.webp"])
             self.assertEqual(before,{p: p.read_bytes() for p in root.rglob("*") if p.is_file()})
 
 if __name__ == "__main__":
