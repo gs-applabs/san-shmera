@@ -9,6 +9,8 @@ public sealed class CalendarPanel : UserControl
     private static CultureInfo El => Loc.Culture;
 
     private DayStore _store;
+    private readonly Font _bodyFont = new("Segoe UI", 9.5f);
+    private Font? _boldFont;
     private readonly PictureBox _flag = new() { Dock = DockStyle.Left, Width = 40, SizeMode = PictureBoxSizeMode.CenterImage, Cursor = Cursors.Hand };
     private readonly Label _title = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter };
     private readonly Label _prev = new() { Text = "◀", Dock = DockStyle.Left, Width = 32, TextAlign = ContentAlignment.MiddleCenter, Cursor = Cursors.Hand };
@@ -24,7 +26,7 @@ public sealed class CalendarPanel : UserControl
     public CalendarPanel(DayStore store)
     {
         _store = store;
-        Font = new Font("Segoe UI", 9.5f);
+        Font = _bodyFont;
         MinimumSize = new Size(220, 300);
         var nav = new Panel { Dock = DockStyle.Top, Height = 28 };
         nav.Controls.Add(_title);
@@ -44,9 +46,7 @@ public sealed class CalendarPanel : UserControl
         Controls.Add(_more);
         Controls.Add(nav);
 
-        _grid.HasData = date => { var v = _store.GetDay(date); return v.Commemorations.Count + v.Events.Count > 0; };
-        _grid.IsMajor = date => _store.GetDay(date).Commemorations.Any(c => c.IsMajorFeast);
-        _grid.IsDayOff = date => Holidays.IsDayOff(date, _store.Region);
+        _grid.BindStore(_store);
         _grid.SelectedChanged += d => { RefreshDay(); UpdateTitle(); SelectedDateChanged?.Invoke(d); };
         _prev.Click += (_, _) => { _grid.Month = _grid.Month.AddMonths(-1); UpdateTitle(); };
         _next.Click += (_, _) => { _grid.Month = _grid.Month.AddMonths(1); UpdateTitle(); };
@@ -73,7 +73,10 @@ public sealed class CalendarPanel : UserControl
         {
             ChronikologioTheme.Changed -= ApplyTheme;
             Loc.Changed -= ApplyLanguage;
-            _flag.Image?.Dispose();
+            var flag = _flag.Image; _flag.Image = null; flag?.Dispose();
+            var thumb = _thumb.Image; _thumb.Image = null; thumb?.Dispose();
+            _boldFont?.Dispose(); _bodyFont.Dispose();
+            _tip.Dispose();
         }
         base.Dispose(disposing);
     }
@@ -120,6 +123,7 @@ public sealed class CalendarPanel : UserControl
             var region = country.Region;
             menu.Items.Add(new ToolStripMenuItem(Loc.T("region." + region), Flags.Create(region, 24, 16), (_, _) => ChooseRegion(region)) { Checked = region == _store.Region });
         }
+        menu.Closed += (_, _) => { foreach (ToolStripItem item in menu.Items) item.Image?.Dispose(); menu.Dispose(); };
         menu.Show(_flag, new Point(0, _flag.Height));
     }
 
@@ -153,7 +157,7 @@ public sealed class CalendarPanel : UserControl
     public void SetStore(DayStore store)
     {
         _store = store;
-        _grid.Invalidate();
+        _grid.BindStore(store);
         RefreshDay();
     }
 
@@ -175,8 +179,13 @@ public sealed class CalendarPanel : UserControl
         _prev.ForeColor = _next.ForeColor = muted;
         _date.ForeColor = muted;
         _grid.Accent = accent; _grid.Muted = muted;
-        _title.Font = new Font(Font, FontStyle.Bold);
-        _date.Font = new Font(Font, FontStyle.Bold);
+        if (_boldFont is null || _boldFont.Size != Font.Size || _boldFont.FontFamily.Name != Font.FontFamily.Name)
+        {
+            var old = _boldFont;
+            _boldFont = new Font(Font, FontStyle.Bold);
+            _title.Font = _date.Font = _boldFont;
+            old?.Dispose();
+        }
         _grid.Invalidate();
     }
 
@@ -188,25 +197,25 @@ public sealed class CalendarPanel : UserControl
     private void RefreshDay()
     {
         _date.Text = _grid.Selected.ToString("dddd d MMMM", El) + " " + OldCalendar.Note(_grid.Selected);
-        _short.Text = ShortText.Build(_store.GetDay(_grid.Selected), _store.Region).Replace("\n", Environment.NewLine);
+        var day = _store.GetDay(_grid.Selected);
+        _short.Text = ShortText.Build(day, _store.Region).Replace("\n", Environment.NewLine);
         _short.SelectionStart = 0;
         _short.SelectionLength = 0;
-        ShowThumbnail(_store.GetDay(_grid.Selected));
+        ShowThumbnail(day);
     }
 
     /// <summary>The first available image of the day (a saint's icon, else an event photograph) beside the short text; hidden when there is none.</summary>
     private void ShowThumbnail(DayView day)
     {
-        _thumb.Image?.Dispose();
+        var old = _thumb.Image;
         _thumb.Image = null;
+        old?.Dispose();
         _thumb.Width = 0;
         foreach (var image in day.SaintImages)
         {
-            var path = _store.ImagePath(image);
-            if (path is null) continue;
             try
             {
-                _thumb.Image = ImageLoader.Load(path);
+                _thumb.Image = ImageLoader.LoadFromStore(_store, image);
             }
             catch (Exception ex) when (ex is ArgumentException or OutOfMemoryException or IOException)
             {

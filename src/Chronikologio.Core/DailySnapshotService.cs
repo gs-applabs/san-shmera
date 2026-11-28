@@ -17,7 +17,9 @@ public sealed class DailySnapshotService : IDisposable
     private DayStore? _store;
     private volatile DailySnapshot? _current;
     private System.Threading.Timer? _midnight;
-    private bool _disposed;
+    private volatile bool _disposed;
+    private readonly object _workGate = new();
+    private bool _workerRunning, _pending, _pendingReload, _started;
 
     public DailySnapshotService(string dataRoot, string region, Func<DateOnly>? today = null)
     {
@@ -40,14 +42,23 @@ public sealed class DailySnapshotService : IDisposable
     {
         get
         {
-            lock (_gate) return _store ??= DayStore.Load(_dataRoot, _region);
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                return _store ??= DayStore.Load(_dataRoot, _region);
+            }
         }
     }
 
     /// <summary>Starts the first snapshot and the midnight timer. Returns at once.</summary>
     public void Start()
     {
-        Rebuild(reload: true);
+        lock (_workGate)
+        {
+            if (_disposed || _started) return;
+            _started = true;
+        }
+        Rebuild(reload: false);
         ScheduleMidnight();
     }
 
@@ -56,11 +67,28 @@ public sealed class DailySnapshotService : IDisposable
     {
         lock (_gate)
         {
-            if (region == _region) return;
+            if (_disposed || region == _region) return;
             _region = region;
             _store = null;
         }
         Rebuild(reload: true);
+    }
+
+    /// <summary>Reuse the store already loaded by the calendar widget, rather than loading it a second time for the feed.</summary>
+    public void UseStore(DayStore store)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        if (!string.Equals(Path.GetFullPath(store.DataRoot), Path.GetFullPath(_dataRoot),
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+            throw new ArgumentException("Store belongs to another data library.", nameof(store));
+        lock (_gate)
+        {
+            if (_disposed) return;
+            if (ReferenceEquals(_store, store)) return;
+            _region = store.Region;
+            _store = store;
+        }
+        Rebuild(reload: false);
     }
 
     /// <summary>The interface language changed: the same data, new texts.</summary>
@@ -69,7 +97,7 @@ public sealed class DailySnapshotService : IDisposable
     /// <summary>Reads the data files again (and makes a new snapshot).</summary>
     public void Refresh()
     {
-        lock (_gate) _store = null;
+        lock (_gate) { if (_disposed) return; _store = null; }
         Rebuild(reload: true);
     }
 
@@ -77,7 +105,7 @@ public sealed class DailySnapshotService : IDisposable
     public void CheckDate()
     {
         var snapshot = _current;
-        if (snapshot is not null && snapshot.Date != _today()) Rebuild(reload: false);
+        if (snapshot is not null && snapshot.Date != _today()) Rebuild(reload: false, onlyIfIdle: true);
     }
 
     /// <summary>Makes a snapshot now, on the calling thread (for the tests and for callers that can wait).</summary>
@@ -86,46 +114,79 @@ public sealed class DailySnapshotService : IDisposable
         DailySnapshot snapshot;
         lock (_gate)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             if (reload) _store = null;
             _store ??= DayStore.Load(_dataRoot, _region);
             var date = _today();
             snapshot = new DailySnapshot(date, _region, Loc.Language, SanSimeraFeed.BuildForTicker(_store, date), DateTimeOffset.Now);
-            _current = snapshot;
+            if (!_disposed) _current = snapshot;
         }
-        Changed?.Invoke();
+        if (!_disposed) Changed?.Invoke();
         return snapshot;
     }
 
-    private void Rebuild(bool reload)
+    private void Rebuild(bool reload, bool onlyIfIdle = false)
     {
-        if (_disposed) return;
-        Task.Run(() =>
+        lock (_workGate)
         {
-            try { if (!_disposed) BuildNow(reload); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+            if (_disposed || (onlyIfIdle && (_workerRunning || _current?.Date == _today()))) return;
+            _pending = true;
+            _pendingReload |= reload;
+            if (_workerRunning) return;
+            _workerRunning = true;
+        }
+        _ = Task.Run(ProcessPending);
+    }
+
+    private void ProcessPending()
+    {
+        while (true)
+        {
+            bool reload;
+            lock (_workGate)
             {
-                // a bad data file must not stop the plugin: the older snapshot stays
+                if (_disposed || !_pending)
+                {
+                    _workerRunning = false;
+                    return;
+                }
+                reload = _pendingReload;
+                _pending = _pendingReload = false;
+            }
+            try { if (!_disposed) BuildNow(reload); }
+            catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+            {
                 System.Diagnostics.Debug.WriteLine("Chronikologio snapshot failed: " + ex.Message);
             }
-        });
+        }
     }
 
     private void ScheduleMidnight()
     {
-        if (_disposed) return;
-        var now = DateTime.Now;
-        var due = now.Date.AddDays(1).AddSeconds(5) - now;
-        _midnight?.Dispose();
-        _midnight = new System.Threading.Timer(_ =>
+        lock (_workGate)
         {
-            Rebuild(reload: false);
-            ScheduleMidnight();
-        }, null, due, Timeout.InfiniteTimeSpan);
+            if (_disposed) return;
+            var now = DateTime.Now;
+            var due = now.Date.AddDays(1).AddSeconds(5) - now;
+            _midnight?.Dispose();
+            _midnight = new System.Threading.Timer(_ =>
+            {
+                Rebuild(reload: false);
+                ScheduleMidnight();
+            }, null, due, Timeout.InfiniteTimeSpan);
+        }
     }
 
     public void Dispose()
     {
-        _disposed = true;
-        _midnight?.Dispose();
+        lock (_workGate)
+        {
+            _disposed = true;
+            _pending = _pendingReload = false;
+            _midnight?.Dispose();
+            _midnight = null;
+        }
+        // Never hold the scheduling lock while waiting for an in-flight database load.
+        lock (_gate) { _store = null; _current = null; Changed = null; }
     }
 }

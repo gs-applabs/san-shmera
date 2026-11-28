@@ -56,6 +56,26 @@ public class SettingsTests : IDisposable
     }
 
     [Fact]
+    public void AnimationsAreOptInAndPersistAcrossRestarts()
+    {
+        using (var w = Open())
+        {
+            Assert.False(w.Animations);
+            Assert.False(WaveClock.Enabled);
+            w.Animations = true;
+            Assert.True(WaveClock.Enabled);
+        }
+        using (var w = Open())
+        {
+            Assert.True(w.Animations);
+            Assert.True(WaveClock.Enabled);
+            w.ResetLook();
+            Assert.False(w.Animations);
+            Assert.False(WaveClock.Enabled);
+        }
+    }
+
+    [Fact]
     public void TheSettingsWindowChangesTheThemeAndLanguageAtOnceAndResets()
     {
         using var w = Open();

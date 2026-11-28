@@ -28,9 +28,15 @@ public static class EntryIds
     /// <summary>Reads the registry: key → identifier. A missing file gives an empty registry.</summary>
     public static Dictionary<string, string> LoadRegistry(string dataRoot)
     {
+        using var source = new TextLibrary(dataRoot);
+        return LoadRegistry(source);
+    }
+
+    internal static Dictionary<string, string> LoadRegistry(TextLibrary source)
+    {
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var file in Directory.Exists(dataRoot) ? Directory.EnumerateFiles(dataRoot, RegistryFile, SearchOption.AllDirectories) : Array.Empty<string>())
-            foreach (var line in File.ReadLines(file))
+        foreach (var file in source.Files.Where(p => Path.GetFileName(p) == RegistryFile))
+            foreach (var line in source.ReadLines(file))
             {
                 if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#')) continue;
                 var f = line.Split('|');

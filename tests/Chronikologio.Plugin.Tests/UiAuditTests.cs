@@ -113,7 +113,7 @@ public class UiAuditTests : IDisposable
             for (var i = 0; i < kids.Count; i++)
                 for (var j = i + 1; j < kids.Count; j++)
                 {
-                    if (kids[i].Dock == DockStyle.Fill || kids[j].Dock == DockStyle.Fill) continue;
+                    if (parent is not DayHeader && (kids[i].Dock == DockStyle.Fill || kids[j].Dock == DockStyle.Fill)) continue;
                     var o = Rectangle.Intersect(kids[i].Bounds, kids[j].Bounds);
                     if (o.Width > 3 && o.Height > 3)
                         problems.Add($"overlap: {Name(kids[i])} and {Name(kids[j])} ({o.Width}x{o.Height}) in {Name(parent)}");
@@ -166,6 +166,96 @@ public class UiAuditTests : IDisposable
         Assert.True(grouped.Count == 0, Environment.NewLine + string.Join(Environment.NewLine, grouped.Take(60)) + $"{Environment.NewLine}({grouped.Count} different problems, {report.Count} in total)");
     }
 
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern uint GetGuiResources(IntPtr process, uint flags);
+
+    [Fact]
+    public void RepeatedDayNavigationDoesNotAccumulateGuiHandles()
+    {
+        using var window = Open(1100, 700);
+        window.ChooseTheme("dark");
+        var first = new DateOnly(2026, 1, 1);
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
+        void Navigate(int count)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                window.SetDate(first.AddDays(i % 365));
+                Application.DoEvents();
+            }
+            window.SetDate(first);
+            Application.DoEvents();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            process.Refresh();
+        }
+        Navigate(20);
+        var beforeGdi = GetGuiResources(process.Handle, 0);
+        var beforeUser = GetGuiResources(process.Handle, 1);
+        var beforeMemory = process.PrivateMemorySize64;
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        Navigate(100);
+        var afterGdi = GetGuiResources(process.Handle, 0);
+        var afterUser = GetGuiResources(process.Handle, 1);
+        var result = new { navigations = 100, elapsedMs = watch.ElapsedMilliseconds, beforeGdi, afterGdi, beforeUser, afterUser, beforeMemory, afterMemory = process.PrivateMemorySize64 };
+        var dir = Environment.GetEnvironmentVariable("CHRON_METRICS_DIR");
+        if (!string.IsNullOrEmpty(dir))
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "navigation-metrics.json"), System.Text.Json.JsonSerializer.Serialize(result));
+        }
+        Assert.True(beforeGdi > 0 && beforeUser > 0, "Windows resource counters unavailable");
+        Assert.True(afterGdi <= beforeGdi + 100, $"GDI handles grew: {beforeGdi} -> {afterGdi}");
+        Assert.True(afterUser <= beforeUser + 100, $"USER handles grew: {beforeUser} -> {afterUser}");
+    }
+
+    [Fact]
+    public void LongNavigationMaintainsABoundedResourcePlateau()
+    {
+        if (Environment.GetEnvironmentVariable("CHRON_SOAK") != "1") return;
+        using var window = Open(1100, 700);
+        window.Animations = false;
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
+        var first = new DateOnly(2026, 1, 1);
+        var samples = new List<(long Managed, long Private, uint Gdi, uint User, int Handles, double CpuMs)>();
+        void Cycle()
+        {
+            var startCpu = process.TotalProcessorTime.TotalMilliseconds;
+            for (var i = 0; i < 120; i++)
+            {
+                window.SetDate(first.AddDays(i * 3 % 365));
+                if (i % 40 == 0) window.ChooseTheme(i % 80 == 0 ? "dark" : "light");
+                Application.DoEvents();
+            }
+            window.SetDate(first);
+            Application.DoEvents();
+            process.Refresh();
+            samples.Add((GC.GetTotalMemory(false), process.PrivateMemorySize64,
+                GetGuiResources(process.Handle, 0), GetGuiResources(process.Handle, 1), process.HandleCount,
+                process.TotalProcessorTime.TotalMilliseconds - startCpu));
+        }
+        // Six identical workloads: no artificial GC between cycles.
+        for (var i = 0; i < 6; i++) Cycle();
+        var baseline = samples[1];
+        var end = samples[^1];
+        var dir = Environment.GetEnvironmentVariable("CHRON_METRICS_DIR");
+        if (!string.IsNullOrEmpty(dir))
+        {
+            Directory.CreateDirectory(dir);
+            var report = samples.Select((s, i) => new { cycle = i + 1, navigations = (i + 1) * 120,
+                managedBytes = s.Managed, privateBytes = s.Private, gdi = s.Gdi, user = s.User,
+                handles = s.Handles, cpuMs = s.CpuMs });
+            File.WriteAllText(Path.Combine(dir, "soak-metrics.json"), System.Text.Json.JsonSerializer.Serialize(report));
+        }
+        Assert.True(baseline.Gdi > 0 && baseline.User > 0, "GUI counters unavailable");
+        Assert.True(end.Gdi <= baseline.Gdi + 60, $"GDI {baseline.Gdi} -> {end.Gdi}");
+        Assert.True(end.User <= baseline.User + 60, $"USER {baseline.User} -> {end.User}");
+        Assert.True(end.Handles <= baseline.Handles + 100, $"Handles {baseline.Handles} -> {end.Handles}");
+        Assert.True(end.Private <= baseline.Private + 64L * 1024 * 1024, $"Private bytes {baseline.Private} -> {end.Private}");
+        Assert.True(end.CpuMs <= Math.Max(baseline.CpuMs * 1.5, baseline.CpuMs + 2000), $"CPU per cycle {baseline.CpuMs} -> {end.CpuMs}");
+    }
+
     [Fact]
     public void TheWindowCannotBeMadeSmallerThanWhatFitsItsControls()
     {
@@ -180,11 +270,13 @@ public class UiAuditTests : IDisposable
     [Fact]
     public void DarkThemeUsesDarkBackgroundsInEveryLayout()
     {
+        new UiSettings { Theme = "dark" }.Save(_settings);
         ChronikologioTheme.Set("dark");
         foreach (var layout in new[] { "day" })
         {
             using var window = Open(1100, 700);
             window.PerformLayout();
+            Assert.True(ChronikologioTheme.IsDark, "The persisted dark theme must be applied at startup.");
             foreach (var c in All(window).Where(Shown).OfType<ScrollableControl>().Where(s => s.BackColor.A == 255))
                 Assert.True(Luminance(c.BackColor) < 0.25, $"{layout}: {Name(c)} has a light background {c.BackColor} in the dark theme");
             foreach (var tab in All(window).OfType<TabControl>())

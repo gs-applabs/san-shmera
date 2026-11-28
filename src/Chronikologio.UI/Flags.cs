@@ -18,7 +18,11 @@ public static class Flags
             if (Originals.TryGetValue(region, out var cached)) return cached;
             Bitmap? bmp = null;
             using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream($"Flags.{region}.png");
-            if (stream is not null) bmp = new Bitmap(stream);
+            if (stream is not null)
+            {
+                using var original = new Bitmap(stream);
+                bmp = new Bitmap(original); // detached from the disposed resource stream
+            }
             return Originals[region] = bmp;
         }
     }

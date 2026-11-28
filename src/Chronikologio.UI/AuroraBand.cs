@@ -4,33 +4,60 @@ using Chronikologio.Core;
 
 namespace Chronikologio.UI;
 
-/// <summary>One clock for every living background of the window (about 12 pictures a second); it runs only while something listens.</summary>
+/// <summary>One adaptive clock for all living backgrounds, with a slow polling interval while no subscribed control is visible.</summary>
 public static class WaveClock
 {
     private static readonly System.Windows.Forms.Timer Timer = new() { Interval = 33 };   // about 30 pictures a second: the lines move smoothly
-    private static int _listeners;
-    private static event Action? TickEvent;
+    private static readonly Dictionary<Action, Control> Listeners = new();
+    private static KeyValuePair<Action, Control>[] _snapshot = Array.Empty<KeyValuePair<Action, Control>>();
 
     private static readonly System.Diagnostics.Stopwatch Clock = System.Diagnostics.Stopwatch.StartNew();
 
     /// <summary>The time of the waves in "wave seconds": it follows the real clock, so the speed does not depend on how fast the pictures are drawn.</summary>
-    public static double Time => Clock.Elapsed.TotalSeconds * 0.4;
+    private static bool _enabled;
+    public static bool Enabled
+    {
+        get => _enabled;
+        set
+        {
+            if (_enabled == value) return;
+            _enabled = value;
+            if (value && Listeners.Count > 0) Timer.Start(); else Timer.Stop();
+            foreach (var (_, control) in _snapshot)
+                if (!control.IsDisposed) control.Invalidate();
+        }
+    }
+
+    public static double Time => Enabled ? Clock.Elapsed.TotalSeconds * 0.4 : 0;
 
     static WaveClock()
     {
-        Timer.Tick += (_, _) => TickEvent?.Invoke();
+        Timer.Tick += (_, _) =>
+        {
+            var active = false;
+            foreach (var (handler, control) in _snapshot)
+            {
+                if (!ShouldDraw(control)) continue;
+                active = true;
+                handler();
+            }
+            var interval = active ? (Form.ActiveForm is null ? 100 : 33) : 250;
+            if (Timer.Interval != interval) Timer.Interval = interval;
+        };
     }
 
-    public static void Subscribe(Action handler)
+    public static void Subscribe(Control control, Action handler)
     {
-        TickEvent += handler;
-        if (++_listeners == 1) Timer.Start();
+        Listeners[handler] = control;
+        _snapshot = Listeners.ToArray();
+        if (Enabled && Listeners.Count == 1) { Timer.Interval = 33; Timer.Start(); }
     }
 
     public static void Unsubscribe(Action handler)
     {
-        TickEvent -= handler;
-        if (--_listeners <= 0) { _listeners = 0; Timer.Stop(); }
+        Listeners.Remove(handler);
+        _snapshot = Listeners.ToArray();
+        if (Listeners.Count == 0) Timer.Stop();
     }
 
     /// <summary>True when a control should draw the next frame: it is shown and its window is not minimised.</summary>
@@ -49,19 +76,21 @@ public static class Waves
         g.SmoothingMode = SmoothingMode.AntiAlias;
         // the same recipe as the header of Opsis: three thin low-opacity sine lines, a point every 16 px, joined by straight segments
         var color = palette.IsDark ? Color.FromArgb(150, 190, 230) : Color.FromArgb(90, 150, 200);
-        var colors = new[] { palette.Accent, color, palette.Accent };
+        var points = new PointF[area.Width / 16 + 1];
         var t = time * 2.5;
         for (var i = 0; i < 3; i++)
         {
             var phase = t * (0.5 + i * 0.15) + i * 1.7;
             var amp = 6 + i * 3;
             var baseline = area.Height * (0.35 + i * 0.28);
-            var points = new List<PointF>();
-            for (var x = 0; x <= area.Width; x += 16)
-                points.Add(new PointF(area.X + x, (float)(area.Y + baseline + Math.Sin(phase + x * 0.012) * amp)));
-            if (points.Count < 2) continue;
-            using var pen = new Pen(Color.FromArgb(90 - i * 15, colors[i]), 1.6f) { LineJoin = LineJoin.Round };
-            g.DrawLines(pen, points.ToArray());
+            for (var j = 0; j < points.Length; j++)
+            {
+                var x = j * 16;
+                points[j] = new PointF(area.X + x, (float)(area.Y + baseline + Math.Sin(phase + x * 0.012) * amp));
+            }
+            if (points.Length < 2) continue;
+            using var pen = new Pen(Color.FromArgb(90 - i * 15, i == 1 ? color : palette.Accent), 1.6f) { LineJoin = LineJoin.Round };
+            g.DrawLines(pen, points);
         }
         g.SmoothingMode = old;
     }
@@ -76,7 +105,7 @@ public sealed class AuroraBand : Control
     {
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         _tick = () => { if (Animated && WaveClock.ShouldDraw(this) && Parent is { Visible: true }) Invalidate(); };
-        WaveClock.Subscribe(_tick);
+        WaveClock.Subscribe(this, _tick);
     }
 
     /// <summary>Turns the movement off (the background then stays still).</summary>
@@ -110,6 +139,8 @@ public sealed class YearTimeline : Control
     private readonly List<Mark> _marks = new();
     private readonly ToolTip _tip = new();
     private int _hover = -1;
+    private PointF[]? _points;
+    private Size _pointSize;
 
     // years where the scale changes: the antiquity is squeezed, the 19th and 20th centuries are wide
     private static readonly (int Year, double At)[] Anchors = { (-1500, 0.0), (0, 0.16), (1000, 0.30), (1500, 0.43), (1800, 0.62), (1900, 0.8), (2030, 1.0) };
@@ -130,6 +161,7 @@ public sealed class YearTimeline : Control
         _marks.Clear();
         _marks.AddRange(marks.OrderBy(m => m.Year));
         _hover = -1;
+        _points = null;
         AccessibleDescription = string.Join("; ", _marks.Take(12).Select(m => MarkText(m)));
         Invalidate();
     }
@@ -145,16 +177,21 @@ public sealed class YearTimeline : Control
         return 1.0;
     }
 
-    private PointF PointOf(Mark m, int index)
+    private PointF[] Points()
     {
-        const int pad = 22;
-        var x = pad + (float)(Position(m.Year) * (Width - 2 * pad));
-        // marks of the same period do not sit on each other: they step up and down
-        var row = _marks.Take(index).Count(o => Math.Abs(PointOf0(o) - x) < 11) % 3;
-        return new PointF(x, Height / 2f - 14 + row * 11);
+        if (_points is not null && _pointSize == Size) return _points;
+        _pointSize = Size;
+        var points = new PointF[_marks.Count];
+        var left = 0;
+        var span = Math.Max(0, Width - 44);
+        for (var i = 0; i < _marks.Count; i++)
+        {
+            var x = 22 + (float)(Position(_marks[i].Year) * span);
+            while (left < i && x - points[left].X >= 11) left++;
+            points[i] = new PointF(x, Height / 2f - 14 + (i - left) % 3 * 11);
+        }
+        return _points = points;
     }
-
-    private float PointOf0(Mark m) => 22 + (float)(Position(m.Year) * (Width - 44));
 
     protected override void OnPaint(PaintEventArgs e)
     {
@@ -177,7 +214,7 @@ public sealed class YearTimeline : Control
         for (var i = 0; i < _marks.Count; i++)
         {
             var m = _marks[i];
-            var pt = PointOf(m, i);
+            var pt = Points()[i];
             var color = m.Kind switch { 0 => p.Accent, 1 => Color.FromArgb(226, 180, 74), 2 => Color.FromArgb(120, 200, 130), _ => Color.FromArgb(200, 110, 110) };
             var r = i == _hover ? 6.5f : 4.5f;
             using var stem = new Pen(Color.FromArgb(80, color), 1f);
@@ -191,11 +228,11 @@ public sealed class YearTimeline : Control
 
     private int HitTest(Point at)
     {
-        var best = -1; var bestD = 12.0;
+        var best = -1; var bestD = 144.0;
         for (var i = 0; i < _marks.Count; i++)
         {
-            var pt = PointOf(_marks[i], i);
-            var d = Math.Sqrt((pt.X - at.X) * (pt.X - at.X) + (pt.Y - at.Y) * (pt.Y - at.Y));
+            var pt = Points()[i];
+            var d = (pt.X - at.X) * (pt.X - at.X) + (pt.Y - at.Y) * (pt.Y - at.Y);
             if (d < bestD) { best = i; bestD = d; }
         }
         return best;

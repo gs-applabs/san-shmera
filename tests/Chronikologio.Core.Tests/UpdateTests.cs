@@ -78,6 +78,8 @@ public sealed class UpdateTests : IDisposable
     [InlineData("[]")]
     [InlineData("{\"tag_name\":\"hello\"}")]
     [InlineData("{}")]
+    [InlineData("{\"tag_name\":123}")]
+    [InlineData("{\"tag_name\":\"v0.9.0\",\"assets\":[42]}")]
     public void ABadAnswerIsReportedNotThrown(string json) => Assert.Equal(UpdateOutcome.BadAnswer, UpdateChecker.Parse(json, Now).Outcome);
 
     [Fact]
@@ -103,6 +105,46 @@ public sealed class UpdateTests : IDisposable
         Assert.Equal(UpdateOutcome.Available, result.Outcome);
         Assert.False(UpdateChecker.IsTrustedDownloadUrl($"https://github.com/{owner}/other-repo/releases/download/v9.9.9/ChronikologioSetup.exe"));
         Assert.False(UpdateChecker.IsTrustedDownloadUrl($"https://github.com/{owner}-evil/san-shmera/releases/download/v9.9.9/ChronikologioSetup.exe"));
+    }
+
+    [Fact]
+    public void InstallerAndHashMustBelongToTheExactReleaseAndAsset()
+    {
+        var root = $"https://github.com/{UpdateChecker.Repository}/releases/download/";
+        Assert.Equal(UpdateOutcome.NoInstaller, UpdateChecker.Parse(Release("v0.9.0", installerUrl: root + "v0.8.0/ChronikologioSetup.exe"), Now).Outcome);
+        Assert.Equal(UpdateOutcome.NoInstaller, UpdateChecker.Parse(Release("v0.9.0", hashUrl: root + "v0.9.0/Other.exe.sha256"), Now).Outcome);
+        Assert.Equal(UpdateOutcome.NoInstaller, UpdateChecker.Parse(Release("v0.9.0", installerUrl: root + "v0.9.0/ChronikologioSetup.exe?x=1"), Now).Outcome);
+    }
+
+    [Fact]
+    public void InvalidCachedStateIsBoundedAndNullFieldsAreNormalized()
+    {
+        var file = Path.Combine(_dir, "state.json");
+        File.WriteAllText(file, "{\"ETag\":null,\"CachedJson\":null,\"SkippedTag\":null}");
+        var state = UpdateState.Load(file);
+        Assert.Empty(state.ETag);
+        Assert.Empty(state.CachedJson);
+        Assert.Empty(state.SkippedTag);
+        using (var stream = File.Create(file)) stream.SetLength(17L * 1024 * 1024);
+        Assert.Empty(UpdateState.Load(file).CachedJson);
+        new UpdateState { ETag = "test" }.Save(file);
+        Assert.Equal("test", UpdateState.Load(file).ETag);
+        Assert.Empty(Directory.GetFiles(_dir, "*.tmp"));
+    }
+
+    [Fact]
+    public async Task ParallelDownloadsDoNotOverwriteOrDeleteEachOther()
+    {
+        var first = new UpdateInstaller(new HttpClient(Server(Hash(Installer), Installer)));
+        var second = new UpdateInstaller(new HttpClient(Server(Hash(Installer), Installer)));
+        var paths = await Task.WhenAll(first.DownloadAsync(Info(), _dir), second.DownloadAsync(Info(), _dir));
+        Assert.NotEqual(paths[0], paths[1]);
+        foreach (var path in paths) Assert.Equal(Installer, File.ReadAllBytes(path));
+        var invalid = new UpdateInstaller(new HttpClient(Server(Hash(new byte[] { 0 }), Installer)));
+        await Assert.ThrowsAsync<UpdateException>(() => invalid.DownloadAsync(Info(), _dir));
+        Assert.Equal(2, Directory.GetDirectories(_dir, "download-*").Length);
+        foreach (var path in paths) Assert.True(File.Exists(path));
+        Assert.Empty(Directory.GetFiles(_dir, "*.part", SearchOption.AllDirectories));
     }
 
     [Fact]
@@ -187,7 +229,7 @@ public sealed class UpdateTests : IDisposable
         var other = Hash(Encoding.UTF8.GetBytes("something else"));
         var ex = await Assert.ThrowsAsync<UpdateException>(() => new UpdateInstaller(new HttpClient(Server(other, Installer))).DownloadAsync(Info(), _dir));
         Assert.Equal(UpdateFailure.HashMismatch, ex.Failure);
-        Assert.Empty(Directory.GetFiles(_dir, "ChronikologioSetup*"));
+        Assert.Empty(Directory.GetFiles(_dir, "ChronikologioSetup*", SearchOption.AllDirectories));
     }
 
     [Fact]
@@ -195,7 +237,7 @@ public sealed class UpdateTests : IDisposable
     {
         var ex = await Assert.ThrowsAsync<UpdateException>(() => new UpdateInstaller(new HttpClient(Server("garbage", Installer))).DownloadAsync(Info(), _dir));
         Assert.Equal(UpdateFailure.NoHash, ex.Failure);
-        Assert.Empty(Directory.GetFiles(_dir, "ChronikologioSetup*"));
+        Assert.Empty(Directory.GetFiles(_dir, "ChronikologioSetup*", SearchOption.AllDirectories));
     }
 
     [Fact]
@@ -219,7 +261,7 @@ public sealed class UpdateTests : IDisposable
         };
         var ex = await Assert.ThrowsAsync<UpdateException>(() => new UpdateInstaller(new HttpClient(fake)).DownloadAsync(Info(), _dir));
         Assert.Equal(UpdateFailure.Untrusted, ex.Failure);
-        Assert.Empty(Directory.GetFiles(_dir, "ChronikologioSetup*"));
+        Assert.Empty(Directory.GetFiles(_dir, "ChronikologioSetup*", SearchOption.AllDirectories));
     }
 
     [Fact]
@@ -228,7 +270,7 @@ public sealed class UpdateTests : IDisposable
         var fake = new Fake { Reply = req => req.RequestUri!.AbsolutePath.EndsWith(".sha256", StringComparison.Ordinal) ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(Hash(Installer)) } : throw new HttpRequestException("cut") };
         var ex = await Assert.ThrowsAsync<UpdateException>(() => new UpdateInstaller(new HttpClient(fake)).DownloadAsync(Info(), _dir));
         Assert.Equal(UpdateFailure.Network, ex.Failure);
-        Assert.Empty(Directory.GetFiles(_dir, "ChronikologioSetup*"));
+        Assert.Empty(Directory.GetFiles(_dir, "ChronikologioSetup*", SearchOption.AllDirectories));
     }
 
     [Theory]
@@ -238,6 +280,50 @@ public sealed class UpdateTests : IDisposable
     [InlineData("", false)]
     [InlineData("zzb85a555cfaea30f33e6c44d54ab85f660a76649d7b6732c5174aa02807cfcc", false)]
     public void TheHashFileIsReadStrictly(string text, bool ok) => Assert.Equal(ok, UpdateInstaller.ParseHash(text) is not null);
+
+    [Fact]
+    public async Task RedirectIsRejectedBeforeRequestingUntrustedHost()
+    {
+        var fake = new Fake { Reply = req =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.Redirect);
+            response.Headers.Location = new Uri("https://raw.githubusercontent.com/other/project/main/hash");
+            return response;
+        } };
+        var ex = await Assert.ThrowsAsync<UpdateException>(() => new UpdateInstaller(new HttpClient(fake)).DownloadAsync(Info(), _dir));
+        Assert.Equal(UpdateFailure.Untrusted, ex.Failure);
+        Assert.Equal(1, fake.Calls);
+    }
+
+    [Fact]
+    public async Task AlteredDownloadCannotReachSignatureOrShell()
+    {
+        var download = await new UpdateInstaller(new HttpClient(Server(Hash(Installer), Installer))).DownloadVerifiedAsync(Info(), _dir);
+        File.WriteAllText(download.Path, "changed");
+        var invoked = false;
+        Assert.False(UpdateInstaller.LaunchVerified(download, _ => { invoked = true; return SignatureState.Invalid; }));
+        Assert.False(invoked);
+    }
+
+    [Fact]
+    public void PruningLeavesRecentAndUnexpectedFilesUntouched()
+    {
+        var now = DateTime.UtcNow;
+        string Make(bool old, bool unexpected)
+        {
+            var dir = Directory.CreateDirectory(Path.Combine(_dir, "download-" + Guid.NewGuid().ToString("N")));
+            var file = Path.Combine(dir.FullName, UpdateChecker.InstallerName);
+            File.WriteAllText(file, "test");
+            if (unexpected) File.WriteAllText(Path.Combine(dir.FullName, "personal.txt"), "keep");
+            File.SetLastWriteTimeUtc(file, now.AddDays(old ? -35 : -1));
+            Directory.SetLastWriteTimeUtc(dir.FullName, now.AddDays(old ? -35 : -1));
+            return file;
+        }
+        var stale = Make(true,false); var recent = Make(false,false); var personal = Make(true,true);
+        Assert.Equal(1, UpdateInstaller.PruneOldDownloads(_dir, now));
+        Assert.False(File.Exists(stale));
+        Assert.True(File.Exists(recent)); Assert.True(File.Exists(personal));
+    }
 
     [Fact]
     public void AnInvalidSignatureStopsTheLaunch()

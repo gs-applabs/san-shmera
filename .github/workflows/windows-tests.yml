@@ -13,6 +13,10 @@ env:
 permissions:
   contents: read
 
+concurrency:
+  group: chron-windows-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   core-tests:
     runs-on: windows-latest
@@ -23,13 +27,162 @@ jobs:
         with:
           dotnet-version: '11.0.x'
 
+      - name: Lossless content footprint and integrity audit
+        shell: pwsh
+        run: |
+          python tools/test_pack_media.py
+          if ($LASTEXITCODE -ne 0) { throw "Pack safety regression failed" }
+          python tools/audit_data_footprint.py
+
+      - name: Inventory declared content rights (not legal clearance)
+        shell: pwsh
+        run: |
+          python tools/test_audit_content_rights.py
+          if ($LASTEXITCODE -ne 0) { throw "Rights inventory regression failed" }
+          python tools/audit_content_rights.py --output audit-metrics/content-rights.json
+
       - name: Tests
         run: dotnet test tests/Chronikologio.Core.Tests --nologo
 
-      - name: Vulnerable packages (warning only)
+      - name: Plugin and WinForms tests
+        env:
+          CHRON_METRICS_DIR: ${{ github.workspace }}/audit-metrics
+        run: dotnet test tests/Chronikologio.Plugin.Tests -c Release --nologo
+
+      - name: Long navigation and widget resource soak (720 + 300 dates)
+        if: ${{ !cancelled() }}
+        env:
+          CHRON_SOAK: "1"
+          CHRON_METRICS_DIR: ${{ github.workspace }}/audit-metrics
+        run: dotnet test tests/Chronikologio.Plugin.Tests -c Release --nologo --filter "FullyQualifiedName~LongNavigationMaintainsABoundedResourcePlateau|FullyQualifiedName~RepeatedWidgetCreationAndDisposalMaintainsResourcePlateau"
+
+      - name: Publish desktop app
+        if: ${{ !cancelled() }}
+        run: dotnet publish src/Chronikologio.Windows -c Release -o smoke-app --nologo
+
+      - name: Build and verify packed media in disposable publish folder
+        if: ${{ !cancelled() }}
         shell: pwsh
-        continue-on-error: true
         run: |
-          $out = dotnet list src/Chronikologio.UI package --vulnerable --include-transitive | Out-String
-          Write-Host $out
-          if ($out -match 'has the following vulnerable packages') { Write-Warning 'Vulnerable packages found' }
+          python tools/pack_media.py smoke-app/data --remove-loose | Tee-Object -FilePath audit-metrics/media-pack.json
+          if ($LASTEXITCODE -ne 0) { throw 'Media packing failed' }
+          $env:CHRON_PACKED_DATA = (Resolve-Path smoke-app/data).Path
+          $env:CHRON_SOURCE_DATA = (Resolve-Path data).Path
+          dotnet test tests/Chronikologio.Core.Tests --nologo --filter FullyQualifiedName~PackedMediaTests
+          if ($LASTEXITCODE -ne 0) { throw 'Packed media integrity test failed' }
+          dotnet test tests/Chronikologio.Plugin.Tests -c Release --nologo --filter FullyQualifiedName~InsideThePluginContextPackedImagesCanBeRead
+          if ($LASTEXITCODE -ne 0) { throw 'Packed plugin host decoding failed' }
+
+      - name: Launch desktop app and sample resources
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Join-Path (Resolve-Path smoke-app) 'Chronikologio.exe'
+          Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class ChronWindow { [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hwnd, int command); [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hwnd); }'
+          $p = Start-Process $exe -PassThru
+          try {
+            $sw = [Diagnostics.Stopwatch]::StartNew()
+            do {
+              Start-Sleep -Milliseconds 250
+              $p.Refresh()
+              if ($p.HasExited) { throw 'Application exited during startup' }
+            } until ($p.MainWindowHandle -ne 0 -or $sw.Elapsed.TotalSeconds -ge 20)
+            if ($p.MainWindowHandle -eq 0) { throw 'No main window appeared' }
+            $startup = $sw.ElapsedMilliseconds
+            function Sample-Resources {
+              $p.Refresh()
+              $cpu = $p.TotalProcessorTime.TotalMilliseconds
+              $sample = [Diagnostics.Stopwatch]::StartNew()
+              Start-Sleep -Seconds 8
+              $p.Refresh()
+              if ($p.HasExited -or !$p.Responding) { throw 'Main window not responsive' }
+              $cpuDelta = $p.TotalProcessorTime.TotalMilliseconds - $cpu
+              $elapsed = $sample.ElapsedMilliseconds
+              [ordered]@{ workingSetBytes = $p.WorkingSet64; privateBytes = $p.PrivateMemorySize64; handles = $p.HandleCount; threads = $p.Threads.Count; cpuMs = $cpuDelta; sampleMs = $elapsed; cpuPercentOneCore = (100 * $cpuDelta / $elapsed); cpuPercentMachine = (100 * $cpuDelta / $elapsed / [Environment]::ProcessorCount) }
+            }
+            Start-Sleep -Seconds 3
+            $visible = Sample-Resources
+            # Warm idle soak: sample across a minute without forcing garbage collection.
+            $idle = @()
+            for ($i = 0; $i -lt 7; $i++) { $idle += Sample-Resources }
+            # The normal updater runs at +30s and may initialize HTTP/TLS resources once.
+            # Retain all seven early samples, then separately gate a fully warmed interval.
+            $earlyIdle = $idle
+            $idle = @()
+            for ($i = 0; $i -lt 7; $i++) { $idle += Sample-Resources }
+            $idleStart = $idle[0]; $idleEnd = $idle[-1]
+            $hwnd = $p.MainWindowHandle
+            [void][ChronWindow]::ShowWindowAsync($hwnd, 6)
+            Start-Sleep -Seconds 1
+            if (![ChronWindow]::IsIconic($hwnd)) { throw 'Minimize failed' }
+            $minimized = Sample-Resources
+            [void][ChronWindow]::ShowWindowAsync($hwnd, 9)
+            Start-Sleep -Milliseconds 500
+            if ([ChronWindow]::IsIconic($hwnd)) { throw 'Restore failed' }
+            $result = [ordered]@{ startupMs = $startup; logicalProcessors = [Environment]::ProcessorCount; visible = $visible; earlyIdleSamples = $earlyIdle; idleSamples = $idle; minimized = $minimized }
+            $result | ConvertTo-Json -Depth 5 | Tee-Object -FilePath smoke-metrics.json
+            if ($idleEnd.privateBytes -gt ($idleStart.privateBytes + 32MB)) { throw 'Idle private memory accumulation' }
+            if ($idleEnd.handles -gt ($idleStart.handles + 50)) { throw 'Idle handle accumulation' }
+            if (@($idle | Where-Object { $_.cpuPercentOneCore -gt 5 }).Count -gt 1) { throw 'Excessive warm idle CPU with animations disabled' }
+            if ($minimized.cpuPercentOneCore -gt 5) { throw 'Excessive minimized CPU' }
+          } finally {
+            if (!$p.HasExited) { [void]$p.CloseMainWindow(); if (!$p.WaitForExit(5000)) { $p.Kill(); throw 'Desktop app failed to close gracefully' } }
+            $p.Dispose()
+          }
+      - name: Native painting diagnostics in isolated EXE
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force audit-metrics | Out-Null
+          $env:CHRON_PAINT_AUDIT = Join-Path (Resolve-Path audit-metrics).Path 'paint-audit.json'
+          $env:CHRON_AUDIT_NO_UPDATES = '1'
+          $p = Start-Process (Resolve-Path smoke-app/Chronikologio.exe).Path -PassThru
+          try {
+            $sw = [Diagnostics.Stopwatch]::StartNew()
+            do { Start-Sleep -Milliseconds 250; $p.Refresh(); if ($p.HasExited) { throw 'Diagnostics app exited' } } until ($p.MainWindowHandle -ne 0 -or $sw.Elapsed.TotalSeconds -ge 20)
+            if ($p.MainWindowHandle -eq 0) { throw 'Diagnostics window not found' }
+            Start-Sleep -Seconds 3
+            $p.Refresh()
+            $before = $p.TotalProcessorTime.TotalMilliseconds
+            $t = [Diagnostics.Stopwatch]::StartNew()
+            Start-Sleep -Seconds 12
+            $p.Refresh()
+            $threads = @($p.Threads | ForEach-Object {
+              try { [ordered]@{ id = $_.Id; cpuMs = $_.TotalProcessorTime.TotalMilliseconds } } catch {}
+            } | Sort-Object { $_.cpuMs } -Descending | Select-Object -First 8)
+            [ordered]@{ cpuPercentOneCore = (100 * ($p.TotalProcessorTime.TotalMilliseconds - $before) / $t.ElapsedMilliseconds); threads = $threads } |
+              ConvertTo-Json -Depth 4 | Tee-Object -FilePath audit-metrics/paint-cpu.json
+          } finally {
+            if (!$p.HasExited) { [void]$p.CloseMainWindow(); if (!$p.WaitForExit(5000)) { $p.Kill(); throw 'Diagnostic app did not close' } }
+            $p.Dispose()
+          }
+          if (!(Test-Path $env:CHRON_PAINT_AUDIT)) { throw 'Paint audit not written' }
+          $report = Get-Content $env:CHRON_PAINT_AUDIT -Raw | ConvertFrom-Json
+          $report.controls | Select-Object -First 20 | ConvertTo-Json -Depth 4 | Write-Host
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chronikologio-smoke-metrics
+          path: |
+            smoke-metrics.json
+            audit-metrics/*.json
+            audit-metrics/*.png
+          if-no-files-found: warn
+
+      - name: Vulnerable packages
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          foreach ($project in @('src/Chronikologio.Windows', 'src/Chronikologio.OpsisPlugin')) {
+            $out = dotnet list $project package --vulnerable --include-transitive --format json | Out-String
+            if ($LASTEXITCODE -ne 0) { throw "Dependency audit failed: $project" }
+            Write-Host $out
+            $report = $out | ConvertFrom-Json
+            foreach ($target in $report.projects.frameworks) {
+              foreach ($package in @($target.topLevelPackages) + @($target.transitivePackages)) {
+                if ($package.vulnerabilities) { throw "Vulnerable dependency: $($package.id)" }
+              }
+            }
+          }

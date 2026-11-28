@@ -1,17 +1,17 @@
 ﻿LICENCE — Chronikologio
 
-The app is distributed FREE OF CHARGE as open-source software under the MIT licence. You may use, modify and distribute it freely, under the terms below.
+The app is distributed free of charge. The application source code is licensed under MIT. This does not automatically cover third-party datasets, images or other materials.
 
 DISCLAIMER
 The software is provided "AS IS", without any warranty. The author is not liable for any damage or loss of data that may result from its use.
 The texts about saints, feasts and historical events are written in our own words and show their verification state; they are not an official church or historical source.
 
 CONTENT AND IMAGES
-The images come from Wikimedia Commons and have a free licence (public domain, CC0 or CC BY). Every image shows its creator, its licence and the link to its source.
-The data rest on public sources: the Megas Synaxaristis (synaxarion.gr) for the memories of the saints and the Greek Wikipedia (el.wikipedia.org) for names and years. Only the facts are taken from them; the texts of the app do not copy texts of other websites.
+Images are primarily sourced from Wikimedia Commons and NASA. Their metadata states the declared creator, licence and source. WebP files have undergone format conversion. Declared licences are not independent legal clearance or a blanket grant of third-party rights.
+The data rest on public sources: the Megas Synaxaristis (synaxarion.gr) for the memories of the saints and the Greek Wikipedia (el.wikipedia.org) for names and years. Factual verification and review of redistribution rights for texts and databases are separate processes. The latter remains under review.
 
 THIRD-PARTY SOFTWARE
-The app uses the SkiaSharp library (MIT licence, with Google Skia, BSD licence) to read WebP images.
+The app uses the SkiaSharp library (MIT licence, with Google Skia, BSD licence) to read WebP images, and Astronomy Engine (MIT) for local astronomical calculations.
 
 MIT License
 

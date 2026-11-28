@@ -50,7 +50,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download -R giorstergiopoulos-design/Opsis -p 'OpsisSetup.exe' -D opsis-setup --clobber
+          gh release download -R gs-applabs/Opsis -p 'OpsisSetup.exe' -D opsis-setup --clobber
           $p = Start-Process opsis-setup\OpsisSetup.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/LOG=opsis-install.log' -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "Opsis setup exit code $($p.ExitCode)" }
           $k = Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue | ForEach-Object { Get-ItemProperty $_.PSPath } | Where-Object { $_.DisplayName -like 'Opsis - Desktop*' } | Select-Object -First 1
@@ -68,7 +68,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download v0.8.0 -R giorstergiopoulos-design/san-shmera -p 'ChronikologioSetup.exe*' -D old-setup --clobber
+          gh release download v0.8.0 -R gs-applabs/san-shmera -p 'ChronikologioSetup.exe*' -D old-setup --clobber
           $want = ((Get-Content old-setup\ChronikologioSetup.exe.sha256 -Raw).Trim() -split '[\s*]+')[0].ToLowerInvariant()
           $have = (Get-FileHash old-setup\ChronikologioSetup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($want -ne $have) { throw "the published v0.8.0 installer does not match its SHA-256 ($have <> $want)" }
@@ -97,7 +97,8 @@ jobs:
           $dll = Join-Path $dst 'Chronikologio.OpsisPlugin.dll'
           if (-not (Test-Path $dll)) { Get-Content plugin-install.log -Tail 40; throw "the plugin was not installed into $dst" }
           if ((Get-Item $dll).LastWriteTimeUtc.Ticks -eq [long]$env:OLD_PLUGIN_TIME) { throw 'the plugin file was not replaced by the upgrade' }
-          if ((Get-Item $dll).VersionInfo.FileVersion -notlike "$new*") { throw "the plugin file version is $((Get-Item $dll).VersionInfo.FileVersion), expected $new" }
+          if ((Get-Item $dll).VersionInfo.FileVersion -ne "1.0.0.0") { throw "Unexpected plugin DLL identity" }
+          if ((Get-Item $dll).VersionInfo.ProductVersion -notlike "$new*") { throw "Unexpected plugin product version" }
           if (Get-ChildItem $dst -Filter '*.part' -ErrorAction SilentlyContinue) { throw 'half-written files are left in the plugin folder' }
           Get-ChildItem $dst | Select-Object -First 20 | ForEach-Object { $_.Name }
 

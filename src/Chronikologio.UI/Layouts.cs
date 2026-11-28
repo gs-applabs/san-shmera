@@ -11,12 +11,10 @@ public static class DayImages
     {
         foreach (var candidate in day.SaintImages)
         {
-            var path = store.ImagePath(candidate);
-            if (path is null) continue;
             try
             {
                 image = candidate;
-                return ImageLoader.Load(path);
+                return ImageLoader.LoadFromStore(store, candidate);
             }
             catch (Exception ex) when (ex is ArgumentException or OutOfMemoryException or IOException) { }
         }
@@ -43,10 +41,13 @@ public sealed class FlagButton : PictureBox
 
     public void SetRegion(string region)
     {
-        _region = region;
-        var old = Image;
-        Image = Flags.Create(region);
-        old?.Dispose();
+        if (_region != region || Image is null)
+        {
+            _region = region;
+            var old = Image;
+            Image = Flags.Create(region);
+            old?.Dispose();
+        }
         _tip.SetToolTip(this, Loc.T("flag.tip"));
     }
 
@@ -58,6 +59,11 @@ public sealed class FlagButton : PictureBox
             var region = country.Region;
             menu.Items.Add(new ToolStripMenuItem(Loc.T("region." + region), Flags.Create(region, 24, 16), (_, _) => RegionChosen?.Invoke(region)) { Checked = region == _region });
         }
+        menu.Closed += (_, _) =>
+        {
+            foreach (ToolStripItem item in menu.Items) item.Image?.Dispose();
+            menu.Dispose();
+        };
         menu.Show(this, new Point(0, Height));
     }
 
@@ -76,6 +82,7 @@ public sealed class MiniCalendar : UserControl
     private readonly Label _next = new() { Text = "▶", Dock = DockStyle.Right, Width = 28, TextAlign = ContentAlignment.MiddleCenter, Cursor = Cursors.Hand };
     private readonly CalendarGrid _grid = new() { Dock = DockStyle.Fill };
     private DayStore _store;
+    private Font? _titleFont;
 
     public event Action<DateOnly>? DateChosen;
 
@@ -105,10 +112,13 @@ public sealed class MiniCalendar : UserControl
     public void SetStore(DayStore store)
     {
         _store = store;
-        _grid.HasData = d => { var v = _store.GetDay(d); return v.Commemorations.Count + v.Events.Count > 0; };
-        _grid.IsMajor = d => _store.GetDay(d).Commemorations.Any(c => c.IsMajorFeast);
-        _grid.IsDayOff = d => Holidays.IsDayOff(d, _store.Region);
-        _grid.Invalidate();
+        _grid.BindStore(store);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) { _titleFont?.Dispose(); _titleFont = null; }
+        base.Dispose(disposing);
     }
 
     public void UpdateTitle() => _title.Text = _grid.Month.ToString("MMMM yyyy", Loc.Culture);
@@ -119,7 +129,12 @@ public sealed class MiniCalendar : UserControl
         BackColor = p.Background;
         foreach (var c in new Control[] { _title, _grid }) { c.BackColor = p.Background; c.ForeColor = p.Text; }
         foreach (var c in new[] { _prev, _next }) { c.BackColor = p.Background; c.ForeColor = p.TextMuted; }
-        _title.Font = new Font(Font, FontStyle.Bold);
+        if (_titleFont is null || _titleFont.FontFamily.Name != Font.FontFamily.Name || _titleFont.Size != Font.Size)
+        {
+            var oldFont = _titleFont;
+            _title.Font = _titleFont = new Font(Font, FontStyle.Bold);
+            oldFont?.Dispose();
+        }
         _grid.Accent = p.Accent;
         _grid.Muted = p.TextMuted;
         _grid.Invalidate();
@@ -144,7 +159,7 @@ public sealed class DayHeader : Panel
     private readonly FlagButton _flag = new() { Dock = DockStyle.Left, Width = 50 };
     private readonly Label _prev = new() { Text = "◀", Dock = DockStyle.Left, Width = 30, TextAlign = ContentAlignment.MiddleCenter, Cursor = Cursors.Hand };
     private readonly Label _next = new() { Text = "▶", Dock = DockStyle.Left, Width = 30, TextAlign = ContentAlignment.MiddleCenter, Cursor = Cursors.Hand };
-    private readonly Label _date = new() { Dock = DockStyle.Left, AutoSize = false, Width = 330, TextAlign = ContentAlignment.MiddleLeft };
+    private readonly Label _date = new() { Dock = DockStyle.Fill, AutoSize = false, AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft };
     private readonly EllipsisLabel _old = new() { Dock = DockStyle.Fill, Tag = "muted" };
     private readonly Label _fast = new() { Dock = DockStyle.Bottom, Height = 22, AutoSize = false, AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft, Tag = "muted" };
     private readonly ToolTip _tip = new();
@@ -157,9 +172,9 @@ public sealed class DayHeader : Panel
 
     public DayHeader()
     {
-        SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.ResizeRedraw, true);
+        SetStyle(ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.ResizeRedraw, true);
         _tick = () => { if (WaveClock.ShouldDraw(this)) Invalidate(); };
-        WaveClock.Subscribe(_tick);
+        WaveClock.Subscribe(this, _tick);
         Dock = DockStyle.Top;
         Height = 70;
         Padding = new Padding(4, 4, 4, 2);
@@ -167,6 +182,7 @@ public sealed class DayHeader : Panel
         Controls.Add(_old);
         Controls.Add(_today);
         Controls.Add(_date);
+        Controls.SetChildIndex(_date, 0); // Fill is laid out after the navigation and search controls.
         Controls.Add(_next);
         Controls.Add(_prev);
         Controls.Add(_flag);
@@ -194,7 +210,7 @@ public sealed class DayHeader : Panel
     public void Set(DateOnly date, DayView day, string region)
     {
         _date.Text = date.ToString("dddd d MMMM yyyy", Loc.Culture);
-        _date.Width = TextRenderer.MeasureText(_date.Text, _date.Font).Width + 24;   // as wide as the date, so the rest of the row is left to the old calendar date
+        _tip.SetToolTip(_date, _date.Text); // retain the full date when the available width is narrow
         // the old-calendar note has no room in the first row (the search and the Today button need it): it goes to the second row, after the holiday
         _old.Text = ""; _old.Visible = false;
         var oldNote = OldCalendar.Note(date);
@@ -219,17 +235,8 @@ public sealed class DayHeader : Panel
 
     private readonly Action _tick;
 
-    // the whole header (waves and the controls on them) is painted into one buffer and shown at once: nothing flickers while the lines move
-    protected override CreateParams CreateParams
-    {
-        get
-        {
-            var cp = base.CreateParams;
-            cp.ExStyle |= 0x02000000;   // WS_EX_COMPOSITED
-            return cp;
-        }
-    }
-
+    // Buffer the header itself, not the entire native child-window tree.
+    // WS_EX_COMPOSITED can repeatedly schedule descendant painting with transparent controls.
     protected override void OnPaintBackground(PaintEventArgs e)
     {
         var p = ChronikologioTheme.Palette;
@@ -241,7 +248,7 @@ public sealed class DayHeader : Panel
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) WaveClock.Unsubscribe(_tick);
+        if (disposing && !IsDisposed) { WaveClock.Unsubscribe(_tick); _tip.Dispose(); _date.Font.Dispose(); }
         base.Dispose(disposing);
     }
 }
@@ -254,6 +261,7 @@ public abstract class DayLayout : UserControl
 {
     protected DayStore Store;
     private DateOnly _date = DateOnly.FromDateTime(DateTime.Today);
+    private bool _hasRendered;
     protected readonly DayHeader Header = new();
 
     public event Action<DateOnly>? DateChanged;
@@ -323,6 +331,7 @@ public abstract class DayLayout : UserControl
         var day = Store.GetDay(_date);
         Header.Set(_date, day, Store.Region);
         ShowDay(day);
+        _hasRendered = true;
     }
 
     private void OnLanguage()
@@ -340,8 +349,11 @@ public abstract class DayLayout : UserControl
         BackColor = p.Background;
         Header.Restyle();
         Paint(this, p, false);
-        Refresh_();
+        if (!_hasRendered) Refresh_();
+        OnPaletteChanged();
     }
+
+    protected virtual void OnPaletteChanged() { }
 
     /// <summary>Applies the palette to a control tree: cards and inputs take the surface colour, the rest the background. Self-styled controls are left alone.</summary>
     /// <summary>Black or white, whichever reads better on the accent colour.</summary>

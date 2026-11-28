@@ -18,10 +18,12 @@ public sealed class MainWindow : Form
     private readonly UiSettings _settings;
     private readonly string? _settingsPath;
     private readonly SearchBar _searchBar = new();
-    private readonly CalendarPanel _panel;
     private readonly Panel _host = new() { Dock = DockStyle.Fill };
     private readonly SideRail _rail = new();
     private DayLayout _layout;
+    private TimeToolsPage? _toolsPage;
+    public string ActivePage { get; private set; } = "today";
+    private static string T(string el, string en) => Loc.Language == "en" ? en : el;
     private DateOnly _date = DateOnly.FromDateTime(DateTime.Today);
 
     /// <summary>Set by the stand-alone program: called with the store whenever the lines of the day may have changed (start, country, language), so the News Crawler can show them without Opsis. The tests never set it.</summary>
@@ -32,6 +34,7 @@ public sealed class MainWindow : Form
         _dataRoot = dataRoot;
         _settingsPath = settingsPath;
         _settings = UiSettings.Load(settingsPath);
+        WaveClock.Enabled = _settings.Animations;
         _store = DayStore.Load(dataRoot, _settings.Region);
         Loc.Set(Countries.Resolve(_settings.Language, _store.Region));
 
@@ -43,17 +46,6 @@ public sealed class MainWindow : Form
         if (_settings.Maximized) WindowState = FormWindowState.Maximized;
         KeyPreview = true;
         FormClosing += (_, _) => SaveWindowState();
-
-        _panel = new CalendarPanel(_store) { Dock = DockStyle.Fill, SettingsPath = settingsPath };
-        _panel.SelectedDateChanged += SetDate;
-        _panel.StoreChanged += store =>
-        {
-            _store = store;
-            _layout.SetStore(store);
-            _settings.Region = store.Region;   // the panel saved it already; keep this copy in step so later saves do not undo it
-            _searchBar.SetStore(store);
-            PublishFeed?.Invoke(store);
-        };
 
         _layout = new DayOverviewLayout(_store) { Dock = DockStyle.Fill };
         _layout.SelectedDate = _date;
@@ -105,11 +97,59 @@ public sealed class MainWindow : Form
         _rail.BrandVersion = "v" + UpdateChecker.Norm(UpdateChecker.Current);
         _rail.SetItems(new[]
         {
-            new SideRail.RailItem("today", "\uE787", Loc.T("menu.today") + " (Ctrl+Home)", GoToday, Loc.T("menu.today")),
-            new SideRail.RailItem("theme", "\uE790", Loc.T("menu.theme") + " (Ctrl+T)", CycleTheme, Loc.T("menu.theme")),
+            new SideRail.RailItem("today", "\uE787", Loc.T("menu.today") + " (Ctrl+Home)", GoToday, Loc.T("menu.today"), T("ΗΜΕΡΟΛΟΓΙΟ", "CALENDAR")),
+            new SideRail.RailItem("calendar-tools", "\uE787", T("Μετατροπές και υπολογισμοί (Ctrl+1)", "Conversions and calculations (Ctrl+1)"), () => OpenPage("calendar-tools"), T("Εργαλεία ημερολογίου", "Calendar tools")),
+            new SideRail.RailItem("personal-calendar", "\uE787", T("Ιδιωτικές εγγραφές (Ctrl+3)", "Private entries (Ctrl+3)"), () => OpenPage("personal-calendar"), T("Προσωπικό ημερολόγιο", "Personal calendar")),
+            new SideRail.RailItem("history-catalog", "\uE8A1", T("Ιστορική χρονογραμμή (Ctrl+4)", "Historical timeline (Ctrl+4)"), () => OpenPage("history-catalog"), T("Ιστορική βιβλιοθήκη", "Historical library")),
+            new SideRail.RailItem("astronomy", "\uE708", T("Ήλιος, Σελήνη, εκλείψεις (Ctrl+2)", "Sun, Moon, eclipses (Ctrl+2)"), () => OpenPage("astronomy"), T("Αστρονομία", "Astronomy"), T("ΑΣΤΡΟΝΟΜΙΑ", "ASTRONOMY")),
+            new SideRail.RailItem("theme", "\uE790", Loc.T("menu.theme") + " (Ctrl+T)", CycleTheme, Loc.T("menu.theme"), T("ΕΦΑΡΜΟΓΗ", "APPLICATION")),
             new SideRail.RailItem("settings", "", Loc.T("menu.settings") + " (Ctrl+,)", ShowSettings, Loc.T("menu.settings")),
             new SideRail.RailItem("help", "", Loc.T("menu.about") + " (F1)", ShowGuide, Loc.T("menu.about"))
         });
+        _rail.Checked = ActivePage;
+    }
+
+    public string AstronomySiteSetting
+    {
+        get => _settings.AstronomySite;
+        set
+        {
+            if (value != "auto" && !SkyCalendar.Sites.Any(x => x.Id == value)) return;
+            _settings.AstronomySite = value; _settings.Save(_settingsPath);
+            if (ActivePage == "astronomy") RebuildToolPage();
+        }
+    }
+    private string EffectiveSite => _settings.AstronomySite == "auto" ? (Region == "cy" ? "nicosia" : "athens") : _settings.AstronomySite;
+    public void OpenPage(string page)
+    {
+        if (page is not ("today" or "calendar-tools" or "astronomy" or "personal-calendar" or "history-catalog") || ActivePage == page) return;
+        ActivePage = page;
+        RebuildToolPage();
+    }
+    private void RebuildToolPage()
+    {
+        _host.SuspendLayout();
+        try
+        {
+            if (_toolsPage is not null) { _host.Controls.Remove(_toolsPage); _toolsPage.Dispose(); _toolsPage = null; }
+            _layout.Visible = ActivePage == "today";
+            if (ActivePage != "today")
+            {
+                _searchBar.Clear();
+                _toolsPage = ActivePage switch
+                {
+                    "calendar-tools" => new CalendarToolsPage(_date,Region),
+                    "history-catalog" => new HistoryCatalogPage(_store),
+                    "personal-calendar" => new PersonalCalendarPage(_settingsPath is null
+                        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Chronikologio","personal-calendar.json")
+                        : _settingsPath+".personal.json",_date),
+                    _ => new AstronomyPage(_date,EffectiveSite)
+                };
+                _host.Controls.Add(_toolsPage); _toolsPage.BringToFront();
+            }
+            _rail.Checked = ActivePage;
+        }
+        finally { _host.ResumeLayout(true); }
     }
 
     /// <summary>The day shown on the screen.</summary>
@@ -118,6 +158,7 @@ public sealed class MainWindow : Form
     /// <summary>Goes to today on the screen and the shared calendar, and makes the button of the side menu light up for a moment so the click is seen even when today is already shown.</summary>
     public void GoToday()
     {
+        OpenPage("today");
         SetDate(DateOnly.FromDateTime(DateTime.Today));
         _rail.Pulse("today");
     }
@@ -127,13 +168,21 @@ public sealed class MainWindow : Form
     {
         _date = date;
         _layout.SelectedDate = date;
-        if (_panel.SelectedDate != date) _panel.SelectedDate = date;
     }
 
     /// <summary>Switches the database and, with it, the interface language (the flag button of the screen does the same).</summary>
     public void ChooseRegion(string region)
     {
-        _panel.ChooseRegion(region);
+        if (!DayStore.Regions.Contains(region) || region == _store.Region) return;
+        var store = DayStore.Load(_dataRoot, region);
+        _store = store;
+        _settings.Region = region;
+        _settings.Save(_settingsPath);
+        Loc.Set(Countries.Resolve(_settings.Language, region));
+        _layout.SetStore(store);
+        _searchBar.SetStore(store);
+        if (ActivePage != "today") RebuildToolPage();
+        PublishFeed?.Invoke(store);
     }
 
     /// <summary>Texts of the window in the language of the chosen country.</summary>
@@ -141,7 +190,9 @@ public sealed class MainWindow : Form
     {
         Text = Loc.T("app.title");
         _searchBar.SetPlaceholder(Loc.T("search.placeholder"));
+        _searchBar.SetStore(_store);
         BuildRail();
+        if (_toolsPage is not null) RebuildToolPage();
     }
 
     /// <summary>The language of the interface: "auto" (that of the country), "el" or "en". Kept apart from the country and remembered.</summary>
@@ -156,6 +207,12 @@ public sealed class MainWindow : Form
 
     /// <summary>The language setting in use: "auto", "el" or "en".</summary>
     public string LanguageSetting => _settings.Language;
+
+    public bool Animations
+    {
+        get => _settings.Animations;
+        set { _settings.Animations = value; WaveClock.Enabled = value; _settings.Save(_settingsPath); }
+    }
 
     public void ChooseTheme(string name)
     {
@@ -173,8 +230,12 @@ public sealed class MainWindow : Form
             case Keys.Control | Keys.Home: GoToday(); return true;
             case Keys.F1: ShowGuide(); return true;
             case Keys.Control | Keys.Oemcomma: ShowSettings(); return true;
-            case Keys.Control | Keys.F: _searchBar.Focus(); return true;
-            case Keys.Control | Keys.K: _searchBar.Focus(); return true;
+            case Keys.Control | Keys.D1: OpenPage("calendar-tools"); return true;
+            case Keys.Control | Keys.D2: OpenPage("astronomy"); return true;
+            case Keys.Control | Keys.D3: OpenPage("personal-calendar"); return true;
+            case Keys.Control | Keys.D4: OpenPage("history-catalog"); return true;
+            case Keys.Control | Keys.F:
+            case Keys.Control | Keys.K: OpenPage("today"); _searchBar.Focus(); return true;
             default: return false;
         }
     }
@@ -198,6 +259,7 @@ public sealed class MainWindow : Form
     /// <summary>Turns on the update of the stand-alone app (the plugin inside Opsis never calls this): a check 30 seconds after the start and then every 24 hours. Never blocks the window.</summary>
     public void EnableUpdates(UpdateChecker? checker = null)
     {
+        if (_updates is not null) return;
         _updates = checker ?? new UpdateChecker();
         _updateTimer = new System.Windows.Forms.Timer { Interval = 30_000 };
         _updateTimer.Tick += async (_, _) => { _updateTimer.Interval = (int)TimeSpan.FromHours(24).TotalMilliseconds; if (_settings.CheckForUpdates) await CheckForUpdatesAsync(false); };
@@ -213,6 +275,7 @@ public sealed class MainWindow : Form
         try
         {
             var result = await _updates.CheckAsync(UpdateChecker.Current, manual);
+            if (IsDisposed || Disposing) return;
             if (result.Outcome == UpdateOutcome.Available && result.Update is { } info)
             {
                 var choice = UpdateUi.Offer(this, info);
@@ -237,6 +300,7 @@ public sealed class MainWindow : Form
     {
         ChooseTheme("system");
         ChooseLanguage("auto");
+        Animations = false;
     }
 
     /// <summary>Restyles the window and the search box with the current palette, and the title bar with its dark or light mode.</summary>
@@ -247,6 +311,7 @@ public sealed class MainWindow : Form
         ForeColor = p.Text;
         _searchBar.Restyle();
         _rail.Invalidate();
+        _toolsPage?.Restyle();
         if (IsHandleCreated) TitleBar.Apply(Handle, p.IsDark);
         Invalidate(true);
     }

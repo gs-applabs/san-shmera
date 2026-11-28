@@ -62,11 +62,14 @@ Name: "plugin"; Description: "Plugin για το Opsis (ημερολόγιο wid
 Name: "desktopicon"; Description: "Δημιουργία συντόμευσης στην επιφάνεια εργασίας"; Components: app; Flags: unchecked
 
 [Files]
+Source: "{#DistDir}\legacy-cleanup.txt"; Flags: dontcopy
 Source: "{#DistDir}\app\*"; DestDir: "{app}"; Components: app; Flags: recursesubdirs ignoreversion
 Source: "license-el.txt"; DestDir: "{app}"; DestName: "LICENSE-el.txt"; Components: app; Flags: ignoreversion
 Source: "license-en.txt"; DestDir: "{app}"; DestName: "LICENSE-en.txt"; Components: app; Flags: ignoreversion
 ; The plugin goes into the plugins folder of the Opsis that was found (see [Code]).
-Source: "{#DistDir}\plugin\*"; DestDir: "{code:PluginDir}"; Components: plugin; Flags: recursesubdirs ignoreversion; Check: PluginWillInstall
+Source: "{#DistDir}\plugin\*"; Excludes: "\data\*"; DestDir: "{code:PluginDir}"; Components: plugin; Flags: recursesubdirs ignoreversion; Check: PluginWillInstall
+Source: "shared-library.txt"; DestDir: "{app}"; DestName: "library-format.txt"; Components: app; Flags: ignoreversion
+Source: "shared-library.txt"; DestDir: "{code:PluginDir}"; Components: plugin; Flags: ignoreversion; Check: PluginWillInstall
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; Components: app
@@ -229,6 +232,65 @@ begin
   end;
 end;
 
+{ Only exact vendor copies in protected folders may be removed. Never follow
+  reparse points, delete unknown files or recursively delete a data directory. }
+function ChronFileAttributes(Name: String): LongWord;
+  external 'GetFileAttributesW@kernel32.dll stdcall';
+
+function NoReparseAncestors(const FileName: String): Boolean;
+var
+  Current, Parent: String;
+  Attr: LongWord;
+begin
+  Result := False;
+  Current := FileName;
+  while Current <> '' do
+  begin
+    Attr := ChronFileAttributes(Current);
+    if (Attr = $FFFFFFFF) or ((Attr and $400) <> 0) then Exit;
+    Parent := ExtractFileDir(Current);
+    if Parent = Current then Break;
+    Current := Parent;
+  end;
+  Result := True;
+end;
+
+procedure CleanMatchingLegacyData(const Root: String);
+var
+  Lines: TArrayOfString;
+  I, SplitAt, Removed: Integer;
+  Rel, Hash, Target: String;
+begin
+  if not (IsUnder(Root, ExpandConstant('{commonpf64}')) or IsUnder(Root, ExpandConstant('{commonpf32}'))) then
+  begin
+    Log('Legacy cleanup skipped outside protected program directories.');
+    Exit;
+  end;
+  if not DirExists(Root) then Exit;
+  if not LoadStringsFromFile(ExpandConstant('{tmp}\legacy-cleanup.txt'), Lines) then Exit;
+  Removed := 0;
+  for I := 0 to GetArrayLength(Lines) - 1 do
+  begin
+    SplitAt := Pos('|', Lines[I]);
+    if SplitAt <= 1 then Continue;
+    Rel := Copy(Lines[I], 1, SplitAt - 1);
+    Hash := Copy(Lines[I], SplitAt + 1, Length(Lines[I]));
+    StringChangeEx(Rel, '/', '\', True);
+    if (Length(Hash) <> 64) or (Pos('..', Rel) > 0) or (Pos(':', Rel) > 0) or
+       (Copy(Rel, 1, 1) = '\') then Continue;
+    Target := AddBackslash(Root) + Rel;
+    if not FileExists(Target) then Continue;
+    if not NoReparseAncestors(Target) then Continue;
+    try
+      if CompareText(GetSHA256OfFile(Target), Hash) = 0 then
+        if DeleteFile(Target) then Removed := Removed + 1;
+    except
+      Log('Legacy file retained: ' + Target);
+    end;
+  end;
+  Log('Exact legacy files removed: ' + IntToStr(Removed));
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if (CurStep = ssInstall) and WizardIsComponentSelected('plugin') and PluginWillInstall then
@@ -236,6 +298,16 @@ begin
     ForgetApproval;
     { the user-level folder of the same plugin would load it twice }
     if OpsisProtected then DelTree(ExpandConstant('{userappdata}\Opsis\plugins\Chronikologio'), True, True, True);
+  end;
+  if (CurStep = ssPostInstall) and
+     FileExists(ExpandConstant('{app}\data\texts.pack')) and
+     FileExists(ExpandConstant('{app}\data\media.pack')) and
+     FileExists(ExpandConstant('{app}\data\media.index')) then
+  begin
+    ExtractTemporaryFile('legacy-cleanup.txt');
+    CleanMatchingLegacyData(ExpandConstant('{app}\data'));
+    if WizardIsComponentSelected('plugin') and PluginWillInstall and OpsisProtected then
+      CleanMatchingLegacyData(PluginDir('') + '\data');
   end;
 end;
 

@@ -62,10 +62,17 @@ public static class UpdateUi
         try
         {
             var progress = new Progress<int>(v => { bar.Value = Math.Clamp(v, 0, 100); label.Text = string.Format(Loc.T("upd.downloading"), v); });
-            var path = await new UpdateInstaller().DownloadAsync(info, UpdateInstaller.UpdateFolder, progress);
+            var download = await new UpdateInstaller().DownloadVerifiedAsync(info, UpdateInstaller.UpdateFolder, progress);
             label.Text = Loc.T("upd.verified");
-            if (!UpdateInstaller.Launch(path)) { Failed(form, new UpdateException(UpdateFailure.Untrusted, "signature")); return false; }
+            if (!await Task.Run(() => UpdateInstaller.LaunchVerified(download))) { Failed(form, new UpdateException(UpdateFailure.Untrusted, "signature")); return false; }
             return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            UpdateInstaller.Log("launch failed: " + ex.Message);
+            form.Close();
+            Failed(owner, new UpdateException(UpdateFailure.Untrusted, ex.Message));
+            return false;
         }
         catch (UpdateException ex)
         {

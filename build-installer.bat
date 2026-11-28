@@ -2,7 +2,7 @@
 rem Runs the tests, publishes the app and the Opsis plugin, and compiles the installer with Inno Setup.
 rem Result: Output\ChronikologioSetup.exe (+ .sha256)
 rem Usage:  build-installer.bat [skip-tests]
-rem Needs:  .NET SDK (10 or 11) and Inno Setup 6 or 7 (ISCC.exe).
+rem Needs:  .NET SDK (10 or 11), Python 3.11+ and Inno Setup 6 or 7 (ISCC.exe).
 rem .NET version: set CHRON_NET=10.0 before running to build for .NET 10 (default 11.0).
 setlocal
 cd /d "%~dp0"
@@ -32,6 +32,14 @@ rem Debug symbols (the native library alone has about 95 MB of them) are not shi
 del /s /q "dist\app\*.pdb" "dist\plugin\*.pdb" >nul 2>nul
 rem The contract DLL belongs to Opsis (it is loaded from Opsis, never from the plugin folder).
 if exist "dist\plugin\OpsisNewsCrawler.Plugin.Abstractions.dll" del "dist\plugin\OpsisNewsCrawler.Plugin.Abstractions.dll"
+
+rem The published folders are disposable. Preserve the source data tree.
+rem The independently distributed plugin still contains a complete packed library.
+echo Packing data without changing image or text bytes...
+python tools\pack_media.py dist\app\data --remove-loose --cleanup-manifest dist\legacy-cleanup.txt
+if errorlevel 1 goto :fail
+python tools\pack_media.py dist\plugin\data --remove-loose
+if errorlevel 1 goto :fail
 
 echo [4/4] Compiling the installer...
 set "ISCC="

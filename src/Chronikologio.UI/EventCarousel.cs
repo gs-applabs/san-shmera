@@ -97,8 +97,9 @@ public sealed class EventCarousel : Panel
 
     private void Show()
     {
-        _picture.Image?.Dispose();
+        var old = _picture.Image;
         _picture.Image = null;
+        old?.Dispose();
         _left.Enabled = _right.Enabled = _events.Count > 1;
         // with one event (or none) there is nothing to turn through: the title gets the room of the arrows and the counter
         _left.Visible = _right.Visible = _counter.Visible = _events.Count > 1;
@@ -133,12 +134,10 @@ public sealed class EventCarousel : Panel
         if (_store is null || e.Images is null) return null;
         foreach (var candidate in e.Images)
         {
-            var path = _store.ImagePath(candidate);
-            if (path is null) continue;
             try
             {
                 info = candidate;
-                return ImageLoader.Load(path);
+                return ImageLoader.LoadFromStore(_store, candidate);
             }
             catch (Exception ex) when (ex is ArgumentException or OutOfMemoryException or IOException) { }
         }
@@ -148,7 +147,7 @@ public sealed class EventCarousel : Panel
     private void SetSources(HistoricalEvent e)
     {
         // official references first, then the other links, then the written citation of a source without a link
-        var linked = e.Sources.Where(s => !string.IsNullOrEmpty(s.Url))
+        var linked = e.Sources.Where(s => Uri.TryCreate(s.Url, UriKind.Absolute, out var u) && (u.Scheme == Uri.UriSchemeHttps || u.Scheme == Uri.UriSchemeHttp))
             .OrderBy(s => s.Kind == "official-reference" ? 0 : s.Kind == "encyclopedia-pointer" ? 2 : 1).Take(3).ToList();
         _source.Links.Clear();
         if (linked.Count == 0)
@@ -185,7 +184,7 @@ public sealed class EventCarousel : Panel
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { _picture.Image?.Dispose(); _tip.Dispose(); }
+        if (disposing) { var old = _picture.Image; _picture.Image = null; old?.Dispose(); _title.Font.Dispose(); _tip.Dispose(); }
         base.Dispose(disposing);
     }
 }

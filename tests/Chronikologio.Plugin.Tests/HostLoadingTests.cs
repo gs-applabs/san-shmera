@@ -63,6 +63,62 @@ public class HostLoadingTests
     }
 
     [Fact]
+    public void InsideThePluginContextPackedImagesCanBeRead()
+    {
+        var packed = Environment.GetEnvironmentVariable("CHRON_PACKED_DATA");
+        var source = Environment.GetEnvironmentVariable("CHRON_SOURCE_DATA");
+        if (string.IsNullOrEmpty(packed) || string.IsNullOrEmpty(source)) return;
+        var context = new PluginContext(PluginDll());
+        try
+        {
+            var ui = context.LoadFromAssemblyName(new AssemblyName("Chronikologio.UI"));
+            var core = context.LoadFromAssemblyName(new AssemblyName("Chronikologio.Core"));
+            var storeType = core.GetType("Chronikologio.Core.DayStore")!;
+            var imageType = core.GetType("Chronikologio.Core.ImageRef")!;
+            var store = storeType.GetMethod("Load", new[] { typeof(string), typeof(string) })!
+                .Invoke(null, new object[] { packed, "gr" });
+            var original = Directory.EnumerateFiles(Path.Combine(source, "images"), "*.webp", SearchOption.AllDirectories).First();
+            var relative = Path.GetRelativePath(Path.Combine(source, "images"), original);
+            var imageRef = Activator.CreateInstance(imageType, new object?[] { relative, "caption", "creator", "Public Domain", "https://example.com", null });
+            var loader = ui.GetType("Chronikologio.UI.ImageLoader")!;
+            using var loose = (System.Drawing.Image)loader.GetMethod("Load")!.Invoke(null, new object[] { original })!;
+            using var image = (System.Drawing.Image)loader.GetMethod("LoadFromStore")!.Invoke(null, new[] { store, imageRef })!;
+            Assert.Equal(loose.Size, image.Size);
+        }
+        finally { context.Unload(); }
+    }
+
+    [Fact]
+    public void SharedLibraryKeepsCompatibleAppOnlyUpgradesAndIndependentPluginData()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "chron-resolver-" + Guid.NewGuid().ToString("N"));
+        var app = Path.Combine(root, "app");
+        var shared = Path.Combine(app, "data");
+        var local = Path.Combine(root, "plugin", "data");
+        Directory.CreateDirectory(shared);
+        Directory.CreateDirectory(local);
+        var context = new PluginContext(PluginDll());
+        try
+        {
+            var assembly = context.LoadFromAssemblyPath(PluginDll());
+            var select = assembly.GetType("Chronikologio.OpsisPlugin.PluginDataRoot")!
+                .GetMethod("Select", BindingFlags.Static | BindingFlags.NonPublic)!;
+            string Choose(string appVersion, string pluginVersion) => (string)select.Invoke(null, new object[] { local, app, appVersion, pluginVersion })!;
+            foreach (var name in new[] { "texts.pack", "media.pack", "media.index" })
+                File.WriteAllText(Path.Combine(shared, name), "");
+            File.WriteAllText(Path.Combine(app, "library-format.txt"), "chronikologio-pack-v1");
+            Assert.Equal(shared, Choose("1.2.1", "1.2.1"));
+            Assert.Equal(shared, Choose("1.2.2", "1.2.1"));
+            foreach (var name in new[] { "texts.pack", "media.pack", "media.index" })
+                File.WriteAllText(Path.Combine(local, name), "");
+            Assert.Equal(local, Choose("1.2.1", "1.2.2"));
+            File.WriteAllText(Path.Combine(app, "library-format.txt"), "incompatible");
+            Assert.Equal(local, Choose("1.2.1", "1.2.1"));
+        }
+        finally { context.Unload(); Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public void AfterStartTheCrawlerFindsTheFeedAndTheDesktopFindsTheWidgetThatReplacesTheCalendar()
     {
         var context = new PluginContext(PluginDll());

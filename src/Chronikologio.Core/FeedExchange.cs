@@ -55,15 +55,18 @@ public static class FeedExchange
     /// <summary>Writes the file when its content would change. Never throws: a full disk or a locked file must not disturb the program. True when written.</summary>
     public static bool TryWrite(DayStore store, DateOnly? from = null, string? folder = null)
     {
+        string? temp = null;
         try
         {
             var json = Build(store, from ?? DateOnly.FromDateTime(DateTime.Now));
             var dir = folder ?? DefaultFolder;
             var path = Path.Combine(dir, FileName);
-            if (File.Exists(path) && string.Equals(File.ReadAllText(path, Encoding.UTF8), json, StringComparison.Ordinal)) return false;
+            if (File.Exists(path) && new FileInfo(path).Length <= 256 * 1024 && string.Equals(File.ReadAllText(path, Encoding.UTF8), json, StringComparison.Ordinal)) return false;
             Directory.CreateDirectory(dir);
-            var temp = path + ".tmp";
-            File.WriteAllText(temp, json, new UTF8Encoding(false));
+            temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            using (var writer = new StreamWriter(stream, new UTF8Encoding(false)))
+                writer.Write(json);
             File.Move(temp, path, overwrite: true);
             return true;
         }
@@ -71,6 +74,12 @@ public static class FeedExchange
         {
             System.Diagnostics.Debug.WriteLine("Chronikologio feed file not written: " + ex.Message);
             return false;
+        }
+        finally
+        {
+            if (temp is not null)
+                try { File.Delete(temp); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         }
     }
 }

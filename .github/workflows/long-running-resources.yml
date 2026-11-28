@@ -1,0 +1,147 @@
+name: Long-running desktop resource gate
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/long-running-resources.yml'
+      - 'src/Chronikologio.Windows/**'
+      - 'src/Chronikologio.UI/**'
+      - 'src/Chronikologio.Core/**'
+      - 'tools/pack_media.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chron-long-resource-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '11.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Publish the packed desktop executable
+        shell: pwsh
+        run: |
+          dotnet publish src/Chronikologio.Windows -c Release -o smoke-long --nologo
+          if ($LASTEXITCODE -ne 0) { throw 'Publish failed' }
+          python tools/pack_media.py smoke-long/data --remove-loose
+          if ($LASTEXITCODE -ne 0) { throw 'Lossless packing failed' }
+
+      - name: Ten-minute idle soak and animation opt-in regression
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force audit-long | Out-Null
+          $exe = (Resolve-Path smoke-long/Chronikologio.exe).Path
+          $settingsRoot = Join-Path ([Environment]::GetFolderPath('ApplicationData')) 'Chronikologio'
+          New-Item -ItemType Directory -Force $settingsRoot | Out-Null
+          $settings = Join-Path $settingsRoot 'settings.json'
+          $backup = if (Test-Path -LiteralPath $settings) { [IO.File]::ReadAllBytes($settings) } else { $null }
+          Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class ChronLongWindow { [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hwnd,int cmd); [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hwnd); }'
+          function Start-Chron([bool]$animations) {
+            # Fresh settings on the disposable runner; leave normal network checks enabled.
+            @{ Theme = 'system'; Animations = $animations; CheckForUpdates = $true; Region = 'gr'; Language = 'el'; Width = 1120; Height = 740; Maximized = $false } |
+              ConvertTo-Json | Set-Content -LiteralPath $settings -Encoding utf8
+            $process = Start-Process $exe -PassThru
+            $sw = [Diagnostics.Stopwatch]::StartNew()
+            try {
+              do {
+                Start-Sleep -Milliseconds 250
+                $process.Refresh()
+                if ($process.HasExited) { throw 'App exited during launch' }
+              } until ($process.MainWindowHandle -ne 0 -or $sw.Elapsed.TotalSeconds -ge 20)
+              if ($process.MainWindowHandle -eq 0) { throw 'Main window not found' }
+              return $process
+            } catch {
+              if (!$process.HasExited) { $process.Kill() }
+              $process.Dispose()
+              throw
+            }
+          }
+          function Sample-Chron($process, [int]$seconds) {
+            $process.Refresh()
+            $before = $process.TotalProcessorTime.TotalMilliseconds
+            $sw = [Diagnostics.Stopwatch]::StartNew()
+            Start-Sleep -Seconds $seconds
+            $process.Refresh()
+            if ($process.HasExited -or !$process.Responding) { throw 'Application stopped responding' }
+            [ordered]@{
+              sampleMs = $sw.ElapsedMilliseconds
+              cpuPercentOneCore = 100 * ($process.TotalProcessorTime.TotalMilliseconds - $before) / $sw.ElapsedMilliseconds
+              privateBytes = $process.PrivateMemorySize64
+              workingSetBytes = $process.WorkingSet64
+              handles = $process.HandleCount
+              threads = $process.Threads.Count
+            }
+          }
+          function Stop-Chron($process) {
+            try {
+              if (!$process.HasExited) {
+                [void]$process.CloseMainWindow()
+                if (!$process.WaitForExit(5000)) { $process.Kill(); throw 'App did not close gracefully' }
+              }
+            } finally { $process.Dispose() }
+          }
+          try {
+            $samples = @()
+            $p = Start-Chron $false
+            try {
+              for ($i = 0; $i -lt 20; $i++) {
+                $sample = Sample-Chron $p 30
+                $samples += $sample
+                $sample | ConvertTo-Json -Compress | Write-Host
+                ConvertTo-Json -InputObject $samples -Depth 4 | Set-Content audit-long/idle-10min.json
+              }
+              # The first two minutes may include updater initialization. Evaluate the remaining eight.
+              $warm = @($samples | Select-Object -Skip 4)
+              $base = $warm[0]
+              $last = $warm[-1]
+              if ($last.privateBytes -gt ($base.privateBytes + 32MB)) { throw 'Sustained private memory growth' }
+              if ($last.handles -gt ($base.handles + 50)) { throw 'Sustained handle growth' }
+              if ($last.threads -gt ($base.threads + 10)) { throw 'Sustained thread growth' }
+              if (@($warm | Where-Object { $_.cpuPercentOneCore -gt 5 }).Count -gt 1) { throw 'Sustained idle CPU above budget' }
+            } finally { Stop-Chron $p }
+
+            $p = Start-Chron $true
+            try {
+              $visible = @()
+              for ($i = 0; $i -lt 3; $i++) { $visible += Sample-Chron $p 20 }
+              $hwnd = $p.MainWindowHandle
+              [void][ChronLongWindow]::ShowWindowAsync($hwnd, 6)
+              Start-Sleep -Seconds 1
+              if (![ChronLongWindow]::IsIconic($hwnd)) { throw 'Minimize failed' }
+              $minimized = Sample-Chron $p 30
+              [void][ChronLongWindow]::ShowWindowAsync($hwnd, 9)
+              Start-Sleep -Seconds 1
+              if ([ChronLongWindow]::IsIconic($hwnd)) { throw 'Restore failed' }
+              $restored = Sample-Chron $p 20
+              $report = [ordered]@{ visible = $visible; minimized = $minimized; restored = $restored }
+              $report | ConvertTo-Json -Depth 4 | Tee-Object -FilePath audit-long/animation-resources.json
+              if ($minimized.cpuPercentOneCore -gt 5) { throw 'Hidden animations consume excessive CPU' }
+              # Animation mode has a larger budget than static mode, but must not monopolize one core.
+              if (@($visible | Where-Object { $_.cpuPercentOneCore -gt 65 }).Count -gt 1 -or $restored.cpuPercentOneCore -gt 65) {
+                throw 'Visible animations consume excessive CPU'
+              }
+            } finally { Stop-Chron $p }
+          } finally {
+            if ($null -ne $backup) { [IO.File]::WriteAllBytes($settings, $backup) }
+            elseif (Test-Path -LiteralPath $settings) { Remove-Item -LiteralPath $settings }
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chronikologio-long-resource-metrics
+          path: audit-long/
+          if-no-files-found: warn

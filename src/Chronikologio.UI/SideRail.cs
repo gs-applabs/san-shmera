@@ -31,12 +31,16 @@ public static class ThemeNative
 /// </summary>
 public sealed class SideRail : Control
 {
-    public sealed record RailItem(string Key, string Glyph, string Tip, Action Click, string Label = "");
+    public sealed record RailItem(string Key, string Glyph, string Tip, Action Click, string Label = "", string Group = "");
 
     private readonly List<RailItem> _items = new();
     private readonly ToolTip _tip = new();
     private readonly Action _tick;
     private int _hover = -1;
+    private int _keyboardIndex;
+    private int _lastLogoCycle = -1;
+    private bool _lastFlipping;
+    private readonly System.Windows.Forms.Timer _pulseTimer = new() { Interval = 350 };
     private string? _checked;
 
     public const int RailWidth = 224;
@@ -50,11 +54,23 @@ public sealed class SideRail : Control
     public SideRail()
     {
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        SetStyle(ControlStyles.Selectable, true);
+        TabStop = true;
         Dock = DockStyle.Left;
         Width = RailWidth;
         Cursor = Cursors.Hand;
-        _tick = () => { if (WaveClock.ShouldDraw(this)) Invalidate(new Rectangle(0, 0, Width, BrandHeight)); };   // only the logo moves
-        WaveClock.Subscribe(_tick);
+        _tick = () =>
+        {
+            var seconds = WaveClock.Time / 0.4;
+            var cycle = (int)(seconds / 4.0);
+            var flipping = seconds % 4.0 > 3.28;
+            if (flipping || _lastFlipping || cycle != _lastLogoCycle)
+                Invalidate(new Rectangle(0, 0, Width, BrandHeight));
+            _lastLogoCycle = cycle;
+            _lastFlipping = flipping;
+        };
+        WaveClock.Subscribe(this, _tick);
+        _pulseTimer.Tick += (_, _) => { _pulseTimer.Stop(); _pulse = null; Invalidate(); };
     }
 
     public IReadOnlyList<RailItem> Items => _items;
@@ -63,6 +79,7 @@ public sealed class SideRail : Control
     {
         _items.Clear();
         _items.AddRange(items);
+        _keyboardIndex = Math.Clamp(_keyboardIndex, 0, Math.Max(0, _items.Count - 1));
         AccessibleRole = AccessibleRole.ToolBar;
         AccessibleName = BrandTitle;
         AccessibleDescription = string.Join(", ", _items.Select(i => i.Label));   // the buttons are painted, so a screen reader gets their names here
@@ -83,12 +100,17 @@ public sealed class SideRail : Control
     {
         _pulse = key;
         Invalidate();
-        var timer = new System.Windows.Forms.Timer { Interval = 350 };
-        timer.Tick += (_, _) => { timer.Stop(); timer.Dispose(); _pulse = null; Invalidate(); };
-        timer.Start();
+        _pulseTimer.Stop();
+        _pulseTimer.Start();
     }
 
-    private Rectangle Cell(int index) => new(8, BrandHeight + 6 + index * 46, Width - 16, 42);
+    private bool StartsGroup(int i) => _items[i].Group.Length > 0 && (i == 0 || _items[i-1].Group != _items[i].Group);
+    private Rectangle Cell(int index)
+    {
+        var y = BrandHeight + 6 + index * 40;
+        for (var i = 0; i <= index; i++) if (StartsGroup(i)) y += 24;
+        return new Rectangle(8, y, Width - 16, 38);
+    }
 
     protected override void OnPaint(PaintEventArgs e)
     {
@@ -99,15 +121,19 @@ public sealed class SideRail : Control
         DrawBrand(g, p);
         using var glyphFont = new Font("Segoe MDL2 Assets", 14f);
         using var labelFont = new Font("Segoe UI", 10.5f);
+        using var groupFont = new Font("Segoe UI", 8.5f, FontStyle.Bold);
         using var accent = new SolidBrush(p.Accent);
         using var hoverBrush = new SolidBrush(Color.FromArgb(40, p.Text));
         for (var i = 0; i < _items.Count; i++)
         {
             var r = Cell(i);
+            if (StartsGroup(i))
+                TextRenderer.DrawText(g, _items[i].Group, groupFont, new Rectangle(14, r.Y - 23, Width - 28, 22), p.TextMuted, TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             var selected = _items[i].Key == _checked || _items[i].Key == _pulse;
             var color = selected ? p.Accent : p.TextMuted;
             if (i == _hover || _items[i].Key == _pulse) g.FillRectangle(hoverBrush, r);
             if (selected) g.FillRectangle(accent, 0, r.Y + 8, 3, r.Height - 16);
+            if (Focused && i == _keyboardIndex) ControlPaint.DrawFocusRectangle(g, r, p.Text, p.Surface);
             var iconCell = new Rectangle(r.X, r.Y, 44, r.Height);
             if (_items[i].Key == "help") DrawInfo(g, iconCell, color);
             else TextRenderer.DrawText(g, _items[i].Glyph, glyphFont, iconCell, color, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
@@ -142,7 +168,7 @@ public sealed class SideRail : Control
         using (var body = Rounded(bodyRect, 4))
         {
             using (var paperBrush = new SolidBrush(paper)) g.FillPath(paperBrush, body);
-            var keep = g.Clip;
+            using var keep = g.Clip;
             g.SetClip(body, System.Drawing.Drawing2D.CombineMode.Intersect);
             // the page area: the next sheet is under the one that turns
             var pageArea = new RectangleF(7, 14, 22, 16);
@@ -234,17 +260,36 @@ public sealed class SideRail : Control
         Invalidate();
     }
 
+    protected override bool IsInputKey(Keys keyData) => (keyData & Keys.KeyCode) is Keys.Up or Keys.Down or Keys.Home or Keys.End || base.IsInputKey(keyData);
+    protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
+    protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); Invalidate(); }
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (_items.Count == 0) return;
+        switch (e.KeyCode)
+        {
+            case Keys.Up: _keyboardIndex = Math.Max(0, _keyboardIndex - 1); break;
+            case Keys.Down: _keyboardIndex = Math.Min(_items.Count - 1, _keyboardIndex + 1); break;
+            case Keys.Home: _keyboardIndex = 0; break;
+            case Keys.End: _keyboardIndex = _items.Count - 1; break;
+            case Keys.Space:
+            case Keys.Enter: _items[_keyboardIndex].Click(); break;
+            default: return;
+        }
+        e.Handled = true; e.SuppressKeyPress = true; Invalidate();
+    }
     protected override void OnMouseUp(MouseEventArgs e)
     {
         base.OnMouseUp(e);
         if (e.Button != MouseButtons.Left) return;
         var i = IndexAt(e.Location);
-        if (i >= 0) _items[i].Click();
+        if (i >= 0) { _keyboardIndex = i; Focus(); _items[i].Click(); }
     }
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { WaveClock.Unsubscribe(_tick); _tip.Dispose(); }
+        if (disposing) { WaveClock.Unsubscribe(_tick); _pulseTimer.Dispose(); _tip.Dispose(); }
         base.Dispose(disposing);
     }
 }

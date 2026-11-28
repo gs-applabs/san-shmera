@@ -1,3 +1,4 @@
+using System.Reflection;
 using Chronikologio.Core;
 using Chronikologio.UI;
 using OpsisNewsCrawler.Plugin.Abstractions;
@@ -11,8 +12,10 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
 {
     public const string FeedKey = "san-simera";
 
-    private DailySnapshotService? _service;
+    private volatile DailySnapshotService? _service;
     private string _language = "el";
+    private readonly object _lifecycle = new();
+    private bool _started;
 
     /// <summary>True when Opsis itself manages the updates of its plugins: the plugin then runs no update check of its own and shows no update card.</summary>
     public bool HostManagesUpdates { get; private set; }
@@ -29,18 +32,22 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
 
     public string Id => "chronikologio";
     public string Name => "Χρονικολόγιο — Timeline Calendar";
-    public string Version => typeof(ChronikologioPlugin).Assembly.GetName().Version?.ToString(3) ?? "0.1.0";
+    public string Version => typeof(ChronikologioPlugin).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "1.2.1";
 
     public event Action<string>? NavigationRequested { add { } remove { } }
 
     // The calendar (Greece or Cyprus) is the one chosen in the stand-alone app's View menu; it is stored in the same settings file.
     // The service reads the data and makes the lines of the day on a background thread, so the bars never wait for the files.
     private DailySnapshotService Service => _service ??= new DailySnapshotService(
-        Path.Combine(Path.GetDirectoryName(typeof(ChronikologioPlugin).Assembly.Location) ?? AppContext.BaseDirectory, "data"),
+        PluginDataRoot.Resolve(Path.GetDirectoryName(typeof(ChronikologioPlugin).Assembly.Location) ?? AppContext.BaseDirectory, Version),
         UiSettings.Load().Region);
 
     public void Start()
     {
+        lock (_lifecycle)
+        {
+        if (_started) return;
+        _started = true;
         PluginLog.Write($"Start: plugin {Version}, language {_language}, host contract {typeof(PluginFeeds).Assembly.Location}");
         var service = Service;
         PluginFeeds.Register(new PluginFeed(FeedKey, "Σαν σήμερα", "On this day", BuildFeed));
@@ -48,18 +55,32 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
         service.Changed += () => 
         {
             PluginLog.Write($"snapshot ready: {service.Current?.Items.Count} lines for {service.Current?.Date}, region {service.Current?.Region}; feeds registered now: {PluginFeeds.All().Count}");
-            PluginFeeds.Register(new PluginFeed(FeedKey, "Σαν σήμερα", "On this day", BuildFeed));
-            FeedExchange.TryWrite(service.Store);   // for the News Crawler when it is not in this process (same content = no write)
+            lock (_lifecycle)
+            {
+                if (!_started || !ReferenceEquals(_service, service)) return;
+                PluginFeeds.Register(new PluginFeed(FeedKey, "Σαν σήμερα", "On this day", BuildFeed));
+            }
+            try { FeedExchange.TryWrite(service.Store); }
+            catch (ObjectDisposedException) { /* Stop raced with feed publication. */ }
         };
         service.Start();
         PluginLog.Write($"feed '{FeedKey}' registered; feeds known to the host: {string.Join(", ", PluginFeeds.All().Select(f => f.Key))}");
+        }
     }
 
     public void Stop()
     {
-        PluginFeeds.Unregister(FeedKey);
-        _service?.Dispose();
-        _service = null;
+        DailySnapshotService? old;
+        lock (_lifecycle)
+        {
+            _started = false;
+            PluginFeeds.Unregister(FeedKey);
+            old = _service;
+            _service = null;
+            _cached = null;
+            _asked = 0;
+        }
+        old?.Dispose();
     }
 
     public void Pause() { }
@@ -97,26 +118,41 @@ public sealed class ChronikologioPlugin : IOpsisNewsCrawlerPlugin, IPluginWidget
             new PluginAboutSection("Δεδομένα", "Data",
                 "Οι εγγραφές έχουν γραφτεί από την αρχή και δείχνουν ποια κατάσταση επαλήθευσης έχουν. Στο τέλος κάθε κειμένου αναφέρονται οι πηγές."),
             new PluginAboutSection("Ενημερώσεις", "Updates",
-                "Ως plugin, το Χρονικολόγιο ενημερώνεται μόνο από το κουμπί ενημέρωσης του Opsis, όχι από δικό του έλεγχο. Οι εκδόσεις βρίσκονται στο github.com/giorstergiopoulos-design/san-shmera (releases) με αρχείο SHA-256· ο εγκαταστάτης Setup ενημερώνει εφαρμογή και plugin μαζί, και ο Opsis μπορεί να ζητήσει νέα έγκριση για το ενημερωμένο plugin.")
+                "Ως plugin, το Χρονικολόγιο ενημερώνεται μόνο από το κουμπί ενημέρωσης του Opsis, όχι από δικό του έλεγχο. Οι εκδόσεις βρίσκονται στο github.com/gs-applabs/san-shmera (releases) με αρχείο SHA-256· ο εγκαταστάτης Setup ενημερώνει εφαρμογή και plugin μαζί, και ο Opsis μπορεί να ζητήσει νέα έγκριση για το ενημερωμένο plugin.")
         });
 
     private Control CreateCalendar()
     {
-        var panel = new CalendarPanel(Service.Store);
-        panel.StoreChanged += store => Service.SetRegion(store.Region);   // the bar feed follows the country chosen with the flag
+        DailySnapshotService service;
+        lock (_lifecycle) service = Service;
+        var panel = new CalendarPanel(service.Store);
+        // Keep the existing service identity. A late click on a widget from a stopped
+        // plugin must not recreate its database or timer.
+        panel.StoreChanged += store =>
+        {
+            lock (_lifecycle)
+                if (ReferenceEquals(_service, service)) service.UseStore(store);
+        };
         return panel;
     }
 
     // Called by the bars on the UI thread: only reads the ready snapshot (empty for the first moments after Start).
     private int _asked;
+    private sealed record CachedFeed(DailySnapshot Snapshot, IReadOnlyList<PluginFeedItem> Items);
+    private volatile CachedFeed? _cached;
 
     private IReadOnlyList<PluginFeedItem> BuildFeed()
     {
-        if (_asked++ < 3 || _asked % 200 == 0) PluginLog.Write($"the bars asked for the lines (time {_asked}); snapshot: {(_service?.Current is { } c ? c.Items.Count + " lines" : "not ready")}");
+        if (Volatile.Read(ref _asked) < 3 && Interlocked.Increment(ref _asked) <= 3) PluginLog.Write($"the bars asked for the lines (time {_asked}); snapshot: {(_service?.Current is { } c ? c.Items.Count + " lines" : "not ready")}");
         var service = _service;
         if (service is null) return Array.Empty<PluginFeedItem>();
         service.CheckDate();
         var snapshot = service.Current;
-        return snapshot is null ? Array.Empty<PluginFeedItem>() : snapshot.Items.Select(i => new PluginFeedItem(i.Text)).ToList();
+        if (snapshot is null) return Array.Empty<PluginFeedItem>();
+        var cache = _cached;
+        if (cache is not null && ReferenceEquals(cache.Snapshot, snapshot)) return cache.Items;
+        var items = Array.AsReadOnly(snapshot.Items.Select(i => new PluginFeedItem(i.Text)).ToArray());
+        if (ReferenceEquals(_service, service)) _cached = new CachedFeed(snapshot, items);
+        return items;
     }
 }
