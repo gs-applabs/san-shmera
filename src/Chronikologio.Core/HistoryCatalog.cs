@@ -46,7 +46,7 @@ public sealed class HistoryCatalog
                 !string.IsNullOrEmpty(region) && !string.Equals(region,e.Region,StringComparison.Ordinal) ||
                 fromYear.HasValue && (!e.Year.HasValue || e.Year.Value<fromYear.Value) ||
                 toYear.HasValue && (!e.Year.HasValue || e.Year.Value>toYear.Value) ||
-                query.Length>0 && !x.SearchText.Contains(query,StringComparison.Ordinal)) continue;
+                query.Length>0 && !x.SearchText.Contains(query,StringComparison.Ordinal) && !string.Equals(e.Key,(text??"").Trim(),StringComparison.Ordinal)) continue;
             if (total>=offset && result.Count<limit) result.Add(e);
             total++;
         }
