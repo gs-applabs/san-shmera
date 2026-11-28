@@ -202,7 +202,7 @@ public sealed class PersonalCalendarPage : TimeToolsPage
             _store.WriteUpcomingIcs(picker.FileName,DateOnly.FromDateTime(DateTime.Today),DateTime.UtcNow);
             _status.Text = T("Η εξαγωγή ολοκληρώθηκε. Δεν περιλαμβάνονται σημειώσεις.","Export complete. Notes are not included.");
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException or InvalidOperationException)
         { _status.Text = T("Αποτυχία εξαγωγής. ","Export failed. ")+ex.Message; }
     }
 }
