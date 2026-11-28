@@ -75,10 +75,13 @@ public static class PersonalIcsImport
                 continue;
             }
             if(components.Count==0)throw new InvalidDataException("Property outside calendar.");
+            if(components.Peek()=="VCALENDAR"&&key=="METHOD"&&!value.Equals("PUBLISH",StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Scheduling messages are not supported; import a published calendar instead.");
             if(components.Peek()!="VEVENT")continue;
             // Do not import recurrence, exceptions, cancellations, multi-day or timed events.
-            if(key is "RRULE" or "RDATE" or "EXDATE" or "EXRULE" or "RECURRENCE-ID" or "DURATION" or "ATTACH" or "STATUS")
+            if(key is "RRULE" or "RDATE" or "EXDATE" or "EXRULE" or "RECURRENCE-ID" or "DURATION" or "ATTACH")
                 unsupported=true;
+            if(key=="STATUS"&&!value.Equals("CONFIRMED",StringComparison.OrdinalIgnoreCase))unsupported=true;
             if(key is "UID" or "DTSTART" or "DTEND" or "SUMMARY")
                 if(!properties.TryAdd(key,(header,value)))throw new InvalidDataException("Repeated ICS property: "+key);
         }
