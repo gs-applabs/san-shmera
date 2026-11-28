@@ -1,6 +1,5 @@
 using Chronikologio.Core;
 using Opsis.UI;
-using System.Text;
 
 namespace Chronikologio.UI;
 
@@ -200,11 +199,10 @@ public sealed class PersonalCalendarPage : TimeToolsPage
         if (picker.ShowDialog(FindForm()) != DialogResult.OK) return;
         try
         {
-            var rows = PersonalCalendar.Upcoming(_snapshot.Events,DateOnly.FromDateTime(DateTime.Today));
-            File.WriteAllText(picker.FileName,PersonalCalendar.ExportIcs(rows,DateTime.UtcNow),new UTF8Encoding(false));
+            _store.WriteUpcomingIcs(picker.FileName,DateOnly.FromDateTime(DateTime.Today),DateTime.UtcNow);
             _status.Text = T("Η εξαγωγή ολοκληρώθηκε. Δεν περιλαμβάνονται σημειώσεις.","Export complete. Notes are not included.");
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
         { _status.Text = T("Αποτυχία εξαγωγής. ","Export failed. ")+ex.Message; }
     }
 }
