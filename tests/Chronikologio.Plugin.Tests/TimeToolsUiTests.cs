@@ -32,7 +32,7 @@ public sealed class TimeToolsUiTests : IDisposable
             c.DrawToBitmap(image, new Rectangle(0,0,image.Width,image.Height));
             image.Save(Path.Combine(dir, name + "-" + theme + "-" + language + ".png"));
         }
-        foreach (var page in new[] { "calendar-tools", "astronomy" })
+        foreach (var page in new[] { "calendar-tools", "astronomy", "history-catalog" })
         {
             window.OpenPage(page); Application.DoEvents();
             var surface = Assert.Single(All(window).OfType<TimeToolsPage>());
