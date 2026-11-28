@@ -48,6 +48,33 @@ public sealed class TimeToolsUiTests : IDisposable
     }
 
     [Fact]
+    public void HistoricalManualInputPreservesDateAndRejectsInvalidInput()
+    {
+        Loc.Set("en");
+        using var page = new CalendarToolsPage(new DateOnly(1582,10,4));
+        var mode = Assert.Single(All(page).OfType<CheckBox>());
+        var fields = All(page).OfType<TextBox>().Where(x => x.AccessibleName?.EndsWith("(manual)") == true).ToArray();
+        Assert.Equal(2,fields.Length);
+        Assert.True(mode.Checked);
+        Assert.Equal("04/10/1582",fields[0].Text);
+        var conversion = All(page).OfType<ListView>().First();
+        Assert.Equal("1582-10-04",conversion.Items[0].SubItems[1].Text);
+        mode.Checked = false;
+        Assert.True(mode.Checked);
+        Assert.Equal("04/10/1582",fields[0].Text);
+        fields[0].Text = "31/04/1582";
+        Assert.Empty(conversion.Items.Cast<ListViewItem>());
+        fields[0].Text = "31/12/9999";
+        Assert.Equal("9999-12-31",conversion.Items[0].SubItems[1].Text);
+        fields[0].Text = "25/03/2026";
+        fields[1].Text = "26/03/2026";
+        mode.Checked = false;
+        Assert.False(mode.Checked);
+        Assert.Equal(new DateTime(2026,3,25),All(page).OfType<DateTimePicker>().First().Value.Date);
+        Assert.Equal("2026-03-25",conversion.Items[0].SubItems[1].Text);
+    }
+
+    [Fact]
     public void PagesAreCreatedOnlyOnDemandAndDisposedWhenLeaving()
     {
         using var window = new MainWindow(Path.Combine(AppContext.BaseDirectory,"data"), _settings)
