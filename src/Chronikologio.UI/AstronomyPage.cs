@@ -35,7 +35,7 @@ public sealed class AstronomyPage : TimeToolsPage
         _status.Width = 430; _status.Height = 32;
         _annual = Table((T("Φαινόμενο", "Event"), 280), (T("Μέγιστο / χρόνος UTC", "Peak / time UTC"), 240), (T("Τύπος / ύψος / κάλυψη", "Type / altitude / coverage"), 230));
         Add(_annual, 340);
-        AddLabel(T("Εκλείψεις: παγκόσμια και τοπικά στοιχεία σε UTC. Αρνητικό ύψος = κάτω από τον ορίζοντα στη συγκεκριμένη στιγμή. Ο καιρός και το ανάγλυφο δεν λαμβάνονται υπόψη. Παρατήρηση Ήλιου μόνο με πιστοποιημένο φίλτρο.", "Eclipses: global and local circumstances in UTC. Negative altitude means below horizon at that instant. Weather and terrain are not modelled. Use certified solar eye protection."), 80, "muted");
+        AddLabel(T("Εκλείψεις: παγκόσμια και τοπικά στοιχεία σε UTC. Αρνητικό ύψος = κάτω από τον ορίζοντα στη συγκεκριμένη στιγμή. Τοπικά σεληνιακά διαστήματα: κέντρο Σελήνης πάνω από επίπεδο ορίζοντα, κατά προσέγγιση. Δεν συνυπολογίζονται φωτεινότητα ουρανού, καιρός ή ανάγλυφο. Παρατήρηση Ήλιου μόνο με πιστοποιημένο φίλτρο.", "Eclipses: global and local circumstances in UTC. Negative altitude means below horizon at that instant. Local lunar windows approximate the Moon centre above a flat horizon; sky brightness, weather and terrain are excluded. Use certified solar eye protection."), 112, "muted");
         AddLabel("Astronomy Engine 2.1.19 · Don Cross · MIT · github.com/cosinekitty/astronomy", 32, "muted");
         _date.ValueChanged += (_, _) => { ResetAnnual(); RefreshDay(); };
         _site.SelectedIndexChanged += (_, _) => { ResetAnnual(); RefreshDay(); };
@@ -77,6 +77,7 @@ public sealed class AstronomyPage : TimeToolsPage
         "moon-0" => T("Νέα Σελήνη", "New moon"), "moon-1" => T("Πρώτο τέταρτο", "First quarter"),
         "moon-2" => T("Πανσέληνος", "Full moon"), "moon-3" => T("Τελευταίο τέταρτο", "Last quarter"),
         "solar-eclipse" => T("Παγκόσμια ηλιακή έκλειψη", "Global solar eclipse"), "lunar-eclipse" => T("Σεληνιακή — παγκόσμιο μέγιστο", "Lunar — global peak"),
+        "solar-conjunction" => T("Σύνοδος εξωτερικού πλανήτη με Ήλιο", "Outer planet solar conjunction"),
         "superior-conjunction" => T("Ανώτερη σύνοδος με Ήλιο", "Superior conjunction"),
         "inferior-conjunction" => T("Κατώτερη σύνοδος με Ήλιο", "Inferior conjunction"),
         "opposition" => T("Αντίθεση πλανήτη", "Planetary opposition"), _ => kind
@@ -113,6 +114,22 @@ public sealed class AstronomyPage : TimeToolsPage
                         detail += $" · {peak.MoonAltitudeDegrees:F1}°";
                     }
                     rows.Add((e.Utc, new[] { EventName(e.Kind), e.Utc.ToString("dd/MM/yyyy HH:mm"), detail }));
+                }
+                foreach (var eclipse in SkyCalendar.LocalLunarForYear(year, site, cts.Token))
+                {
+                    foreach (var phase in eclipse.Phases)
+                    {
+                        var name = phase.Kind switch
+                        {
+                            "total" => T("Ολικότητα", "Totality"),
+                            "partial" => T("Φάση σκιάς", "Umbral phase"),
+                            _ => T("Φάση παρασκιάς", "Penumbral phase")
+                        };
+                        if (phase.AboveHorizon.Count == 0)
+                            rows.Add((phase.BeginUtc,new[] { name, phase.BeginUtc.ToString("dd/MM/yyyy HH:mm"), T("Κάτω από ορίζοντα", "Below horizon") }));
+                        foreach (var window in phase.AboveHorizon)
+                            rows.Add((window.BeginUtc,new[] { name + T(" — τοπικά", " — local"), window.BeginUtc.ToString("dd/MM/yyyy HH:mm"), T("Έως ", "Until ") + window.EndUtc.ToString("dd/MM HH:mm") }));
+                    }
                 }
                 foreach (var eclipse in SkyCalendar.LocalSolarForYear(year, site, cts.Token))
                 {
