@@ -58,6 +58,9 @@ public sealed class PersonalIcsImportTests : IDisposable
         var e=Event("a","DTSTART;VALUE=DATE:20260228",title:"Long\r\n continuation");
         Assert.Equal("Longcontinuation",Assert.Single(PersonalIcsImport.Parse(Calendar(e)).Events).Title);
         Assert.Throws<InvalidDataException>(()=>PersonalIcsImport.Parse(Calendar(e,e)));
+        Assert.Throws<InvalidDataException>(()=>PersonalIcsImport.Parse(Calendar(e).Replace("VERSION:2.0","VERSION:2.0\r\nMETHOD:CANCEL")));
+        Assert.Equal(1,PersonalIcsImport.Parse(Calendar(Event("b","DTSTART;VALUE=DATE:20260228","STATUS:CANCELLED\r\n"))).Skipped);
+        Assert.Single(PersonalIcsImport.Parse(Calendar(Event("b","DTSTART;VALUE=DATE:20260228","STATUS:CONFIRMED\r\n"))).Events);
         Assert.Throws<InvalidDataException>(()=>PersonalIcsImport.Parse("BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nEND:VCALENDAR"));
         Assert.Throws<InvalidDataException>(()=>PersonalIcsImport.Parse(Calendar(Event("a","DTSTART;VALUE=DATE:20260228",title:new string('x',9000)))));
     }
