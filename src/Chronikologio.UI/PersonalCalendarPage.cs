@@ -15,6 +15,8 @@ public sealed class PersonalCalendarPage : TimeToolsPage
     private readonly FlatComboBox _kind = new() { Width = 145, Height = 32 };
     private readonly CheckBox _yearly = new() { AutoSize = true };
     private readonly CheckBox _upcoming = new() { AutoSize = true, Checked = true };
+    private readonly CheckBox _weekOnly = new() { AutoSize = true };
+    private readonly Label _due = new() { TextAlign=ContentAlignment.MiddleLeft,Tag="card" };
     private readonly Label _status = new() { TextAlign = ContentAlignment.MiddleLeft, Tag = "muted" };
     private readonly ListView _list;
     private readonly FlatButton _save, _delete, _export;
@@ -52,7 +54,9 @@ public sealed class PersonalCalendarPage : TimeToolsPage
         var add = Button(T("Νέα εγγραφή","New entry"),120);
         var reload = Button(T("Ανανέωση","Reload"),105);
         Add(Row(_save,_delete,add,reload),48);
-        Add(Row(_upcoming),35);
+        _weekOnly.Text = T("Επόμενες 7 ημέρες (μαζί με σήμερα)","Next 7 days (including today)");
+        Add(Row(_upcoming,_weekOnly),35);
+        Add(_due,38);
         _list = Table((T("Ημερομηνία","Date"),115),(T("Τίτλος","Title"),245),(T("Κατηγορία","Category"),125),(T("Ετήσια","Yearly"),75));
         Add(_list,260);
         _export = Button(T("Εξαγωγή επόμενων σε ICS","Export upcoming to ICS"),225);
@@ -71,7 +75,8 @@ public sealed class PersonalCalendarPage : TimeToolsPage
         _delete.Click += (_,_) => DeleteEntry();
         add.Click += (_,_) => ClearEditor();
         reload.Click += (_,_) => Reload();
-        _upcoming.CheckedChanged += (_,_) => RefreshList();
+        _upcoming.CheckedChanged += (_,_) => { if(!_upcoming.Checked)_weekOnly.Checked=false; _weekOnly.Enabled=_upcoming.Checked; RefreshList(); };
+        _weekOnly.CheckedChanged += (_,_) => RefreshList();
         _list.SelectedIndexChanged += (_,_) => EditSelected();
         _export.Click += (_,_) => Export();
         ClearEditor(); Reload(); Restyle();
@@ -99,7 +104,7 @@ public sealed class PersonalCalendarPage : TimeToolsPage
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
         {
-            _snapshot = null; _list.Items.Clear();
+            _snapshot = null; _list.Items.Clear(); _due.Text="";
             _save.Enabled = _delete.Enabled = _export.Enabled = false;
             _status.Text = T("Αδυναμία ανάγνωσης. Το αρχικό αρχείο διατηρήθηκε. ","Unable to read. Original file preserved. ")+ex.Message;
         }
@@ -111,9 +116,13 @@ public sealed class PersonalCalendarPage : TimeToolsPage
         try
         {
             _list.Items.Clear();
-            if (_snapshot is null) return;
+            if (_snapshot is null) { _due.Text="";return; }
+            var today=DateOnly.FromDateTime(DateTime.Today);
+            var dueToday=PersonalCalendar.DueWithin(_snapshot.Events,today,0);
+            var dueWeek=PersonalCalendar.DueWithin(_snapshot.Events,today,6);
+            _due.Text=T("Σήμερα: ","Today: ")+dueToday.Count+T(" · Επόμενες 7 ημέρες: "," · Next 7 days: ")+dueWeek.Count;
             var rows = _upcoming.Checked
-                ? PersonalCalendar.Upcoming(_snapshot.Events,DateOnly.FromDateTime(DateTime.Today))
+                ? (_weekOnly.Checked ? dueWeek : PersonalCalendar.Upcoming(_snapshot.Events,today))
                 : _snapshot.Events.OrderBy(x=>x.Date).Select(x=>new PersonalOccurrence(x,x.Date)).ToArray();
             foreach (var row in rows)
                 _list.Items.Add(new ListViewItem(new[] {Civil(row.Date),row.Event.Title,KindName(row.Event.Kind),row.Event.Yearly ? T("Ναι","Yes") : T("Όχι","No")}) {Tag=row.Event.Id});
