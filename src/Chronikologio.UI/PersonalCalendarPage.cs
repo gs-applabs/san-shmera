@@ -15,6 +15,8 @@ public sealed class PersonalCalendarPage : TimeToolsPage
     private readonly FlatComboBox _kind = new() { Width = 145, Height = 32 };
     private readonly CheckBox _yearly = new() { AutoSize = true };
     private readonly CheckBox _upcoming = new() { AutoSize = true, Checked = true };
+    private readonly CheckBox _weekOnly = new() { AutoSize = true };
+    private readonly Label _due = new() { TextAlign=ContentAlignment.MiddleLeft,Tag="card" };
     private readonly Label _status = new() { TextAlign = ContentAlignment.MiddleLeft, Tag = "muted" };
     private readonly ListView _list;
     private readonly FlatButton _save, _delete, _export;
@@ -52,14 +54,18 @@ public sealed class PersonalCalendarPage : TimeToolsPage
         var add = Button(T("Νέα εγγραφή","New entry"),120);
         var reload = Button(T("Ανανέωση","Reload"),105);
         Add(Row(_save,_delete,add,reload),48);
-        Add(Row(_upcoming),35);
+        _weekOnly.Text = T("Επόμενες 7 ημέρες (μαζί με σήμερα)","Next 7 days (including today)");
+        Add(Row(_upcoming,_weekOnly),35);
+        Add(_due,38);
         _list = Table((T("Ημερομηνία","Date"),115),(T("Τίτλος","Title"),245),(T("Κατηγορία","Category"),125),(T("Ετήσια","Yearly"),75));
         Add(_list,260);
         _export = Button(T("Εξαγωγή επόμενων σε ICS","Export upcoming to ICS"),225);
         Add(Row(_export),48);
         var backup = Button(T("Αντίγραφο JSON","JSON backup"),155);
         var import = Button(T("Συγχώνευση JSON","Merge JSON"),170);
-        Add(Row(backup,import),48);
+        var importIcs = Button(T("Εισαγωγή ICS","Import ICS"),150);
+        Add(Row(backup,import,importIcs),48);
+        importIcs.Click += (_,_) => ImportIcs();
         backup.Click += (_,_) => Backup();
         import.Click += (_,_) => Import();
         Add(_status,56);
@@ -69,7 +75,8 @@ public sealed class PersonalCalendarPage : TimeToolsPage
         _delete.Click += (_,_) => DeleteEntry();
         add.Click += (_,_) => ClearEditor();
         reload.Click += (_,_) => Reload();
-        _upcoming.CheckedChanged += (_,_) => RefreshList();
+        _upcoming.CheckedChanged += (_,_) => { if(!_upcoming.Checked)_weekOnly.Checked=false; _weekOnly.Enabled=_upcoming.Checked; RefreshList(); };
+        _weekOnly.CheckedChanged += (_,_) => RefreshList();
         _list.SelectedIndexChanged += (_,_) => EditSelected();
         _export.Click += (_,_) => Export();
         ClearEditor(); Reload(); Restyle();
@@ -97,7 +104,7 @@ public sealed class PersonalCalendarPage : TimeToolsPage
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
         {
-            _snapshot = null; _list.Items.Clear();
+            _snapshot = null; _list.Items.Clear(); _due.Text="";
             _save.Enabled = _delete.Enabled = _export.Enabled = false;
             _status.Text = T("Αδυναμία ανάγνωσης. Το αρχικό αρχείο διατηρήθηκε. ","Unable to read. Original file preserved. ")+ex.Message;
         }
@@ -109,9 +116,13 @@ public sealed class PersonalCalendarPage : TimeToolsPage
         try
         {
             _list.Items.Clear();
-            if (_snapshot is null) return;
+            if (_snapshot is null) { _due.Text="";return; }
+            var today=DateOnly.FromDateTime(DateTime.Today);
+            var dueToday=PersonalCalendar.DueWithin(_snapshot.Events,today,0);
+            var dueWeek=PersonalCalendar.DueWithin(_snapshot.Events,today,6);
+            _due.Text=T("Σήμερα: ","Today: ")+dueToday.Count+T(" · Επόμενες 7 ημέρες: "," · Next 7 days: ")+dueWeek.Count;
             var rows = _upcoming.Checked
-                ? PersonalCalendar.Upcoming(_snapshot.Events,DateOnly.FromDateTime(DateTime.Today))
+                ? (_weekOnly.Checked ? dueWeek : PersonalCalendar.Upcoming(_snapshot.Events,today))
                 : _snapshot.Events.OrderBy(x=>x.Date).Select(x=>new PersonalOccurrence(x,x.Date)).ToArray();
             foreach (var row in rows)
                 _list.Items.Add(new ListViewItem(new[] {Civil(row.Date),row.Event.Title,KindName(row.Event.Kind),row.Event.Yearly ? T("Ναι","Yes") : T("Όχι","No")}) {Tag=row.Event.Id});
@@ -189,6 +200,30 @@ public sealed class PersonalCalendarPage : TimeToolsPage
             _status.Text=T("Προστέθηκαν: ","Added: ")+result.Added+T(" · Ίδιες: "," · Identical: ")+result.Identical+T(" · Συγκρούσεις (διατηρήθηκαν οι τοπικές): "," · Conflicts (local kept): ")+result.Conflicts;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException or ArgumentException)
+        { _status.Text=T("Δεν έγινε εισαγωγή: ","Import failed: ")+ex.Message; }
+    }
+
+    private void ImportIcs()
+    {
+        if (_snapshot is null) return;
+        using var picker = new OpenFileDialog { Filter="iCalendar (*.ics)|*.ics",CheckFileExists=true,Multiselect=false };
+        if (picker.ShowDialog(FindForm()) != DialogResult.OK) return;
+        try
+        {
+            var preview=PersonalIcsImport.Read(picker.FileName);
+            var message=T("Μονοήμερες ολοήμερες εγγραφές: ","Single-day all-day entries: ")+preview.Events.Count+
+                T(" · Μη υποστηριζόμενες: "," · Unsupported: ")+preview.Skipped;
+            if(preview.Events.Count==0){_status.Text=message;return;}
+            if(MessageBox.Show(FindForm(),message+"\n\n"+T("Να εισαχθούν μόνο οι τίτλοι και ημερομηνίες; Οι υπάρχουσες εγγραφές διατηρούνται. Δεν εισάγονται σημειώσεις, επαναλήψεις, ώρες ή ειδοποιήσεις.",
+                "Import titles and dates only? Existing entries are kept. Notes, recurrence, times and alarms are not imported."),
+                T("Εισαγωγή ICS","ICS import"),MessageBoxButtons.YesNo,MessageBoxIcon.Question)!=DialogResult.Yes)return;
+            var result=_store.MergeIcs(preview,_snapshot.Revision);
+            _snapshot=result.Snapshot;
+            ClearEditor();RefreshList();
+            _status.Text=T("Προστέθηκαν: ","Added: ")+result.Added+T(" · Ίδιες: "," · Identical: ")+result.Identical+
+                T(" · Συγκρούσεις: "," · Conflicts: ")+result.Conflicts+T(" · Παραλείφθηκαν: "," · Skipped: ")+preview.Skipped;
+        }
+        catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException or ArgumentException)
         { _status.Text=T("Δεν έγινε εισαγωγή: ","Import failed: ")+ex.Message; }
     }
 

@@ -88,6 +88,18 @@ public sealed class PersonalCalendarTests : IDisposable
     }
 
     [Fact]
+    public void DueWindowIncludesTodayAndSixFollowingDaysWithoutOverflow()
+    {
+        var today=new DateOnly(2026,12,29);
+        var events=new[]{Entry(today),Entry(today.AddDays(6)),Entry(today.AddDays(7)),Entry(today.AddDays(-1)),
+            Entry(new DateOnly(2000,1,1),true)};
+        Assert.Single(PersonalCalendar.DueWithin(events,today,0));
+        Assert.Equal(3,PersonalCalendar.DueWithin(events,today,6).Count);
+        Assert.Single(PersonalCalendar.DueWithin(new[]{Entry(DateOnly.MaxValue)},DateOnly.MaxValue,6));
+        Assert.Throws<ArgumentOutOfRangeException>(()=>PersonalCalendar.DueWithin(events,today,31));
+    }
+
+    [Fact]
     public void IcsIsPrivateEscapedUtf8FoldedAndNotesAreOptIn()
     {
         var title = "Γιορτή, επέτειος; "+new string('Α',80);

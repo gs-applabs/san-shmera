@@ -127,11 +127,20 @@ public sealed class PersonalCalendar
     public ImportResult MergeBackup(string source,string expectedRevision)
     {
         var incoming = ReadSnapshot(Path.GetFullPath(source),false);
+        return MergeEntries(incoming.Events,expectedRevision);
+    }
+
+    public ImportResult MergeIcs(PersonalIcsImport.Preview preview,string expectedRevision)
+        => MergeEntries(preview.Events,expectedRevision);
+
+    private ImportResult MergeEntries(IReadOnlyCollection<PersonalEvent> incoming,string expectedRevision)
+    {
+        Validate(incoming);
         var current = Load();
         if (current.Revision != expectedRevision) throw new InvalidOperationException("Reload before importing.");
         var items = current.Events.ToDictionary(x=>x.Id);
         int added=0, identical=0, conflicts=0;
-        foreach (var e in incoming.Events)
+        foreach (var e in incoming)
         {
             if (items.TryGetValue(e.Id,out var prior))
             {
@@ -155,6 +164,13 @@ public sealed class PersonalCalendar
             if (date.HasValue) result.Add(new(e,date.Value));
         }
         return result.OrderBy(x=>x.Date).ThenBy(x=>x.Event.Title,StringComparer.CurrentCultureIgnoreCase).ToArray();
+    }
+
+    public static IReadOnlyList<PersonalOccurrence> DueWithin(IEnumerable<PersonalEvent> events,DateOnly today,int daysAhead)
+    {
+        if(daysAhead<0||daysAhead>30)throw new ArgumentOutOfRangeException(nameof(daysAhead));
+        var last=DateOnly.FromDayNumber(Math.Min(DateOnly.MaxValue.DayNumber,today.DayNumber+daysAhead));
+        return Upcoming(events,today).Where(x=>x.Date<=last).ToArray();
     }
 
     /// <summary>Export concrete all-day occurrences only, not a calendar subscription.
