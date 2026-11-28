@@ -42,6 +42,9 @@ public sealed class HistoryCatalogPage : TimeToolsPage
         apply.Click+=(_,_)=>RefreshPage(0);
         _verified.CheckedChanged+=(_,_)=>RefreshPage(0);
         _kind.SelectedIndexChanged+=(_,_)=>RefreshPage(0);
+        _query.TextChanged+=(_,_)=>{_previous.Enabled=_next.Enabled=false;};
+        _from.TextChanged+=(_,_)=>{_previous.Enabled=_next.Enabled=false;};
+        _to.TextChanged+=(_,_)=>{_previous.Enabled=_next.Enabled=false;};
         _query.KeyDown+=(_,e)=>{if(e.KeyCode==Keys.Enter){RefreshPage(0);e.SuppressKeyPress=true;}};
         _previous.Click+=(_,_)=>RefreshPage(Math.Max(0,_offset-PageSize));
         _next.Click+=(_,_)=>RefreshPage(_offset+PageSize);
@@ -76,6 +79,7 @@ public sealed class HistoryCatalogPage : TimeToolsPage
             _status.Text=T("Μη έγκυρο εύρος ετών.","Invalid year range.");return;
         }
         var result=_catalog.Search(_query.Text,Kinds[Math.Clamp(_kind.SelectedIndex,0,Kinds.Length-1)],from,to,_verified.Checked,offset,PageSize);
+        if(offset>0 && offset>=result.Total){RefreshPage(0);return;}
         _offset=offset;
         _list.BeginUpdate();
         try
