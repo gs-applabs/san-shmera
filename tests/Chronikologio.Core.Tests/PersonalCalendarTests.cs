@@ -43,6 +43,34 @@ public sealed class PersonalCalendarTests : IDisposable
     }
 
     [Fact]
+    public void BackupMergePreservesLocalConflictsAndDoesNotDuplicateEntries()
+    {
+        var store=new PersonalCalendar(FileName);
+        var original=Entry(new(2026,1,1));
+        var state=store.Save("",new[]{original});
+        var backup=Path.Combine(_root,"backup.json");
+        store.WriteBackup(backup);
+        Assert.Throws<IOException>(()=>store.WriteBackup(backup));
+        Assert.Throws<InvalidOperationException>(()=>store.WriteBackup(FileName));
+        var other=new PersonalCalendar(backup);
+        var incoming=Entry(new(2027,1,1));
+        other.Save(other.Load().Revision,new[]{original with {Title="Changed externally"},incoming});
+        var result=store.MergeBackup(backup,state.Revision);
+        Assert.Equal(1,result.Added);
+        Assert.Equal(1,result.Conflicts);
+        Assert.Contains(original,result.Snapshot.Events);
+        Assert.Contains(incoming,result.Snapshot.Events);
+        var again=store.MergeBackup(backup,result.Snapshot.Revision);
+        Assert.Equal(0,again.Added);
+        Assert.Equal(1,again.Identical);
+        Assert.Equal(result.Snapshot.Revision,again.Snapshot.Revision);
+        Assert.Throws<InvalidOperationException>(()=>store.MergeBackup(backup,state.Revision));
+        File.WriteAllText(backup,"bad json");
+        Assert.Throws<InvalidDataException>(()=>store.MergeBackup(backup,again.Snapshot.Revision));
+        Assert.Equal(2,store.Load().Events.Count);
+    }
+
+    [Fact]
     public void UpcomingEventsRespectLeapPolicyAndOriginalDate()
     {
         var leap = Entry(new(2020,2,29),true);
