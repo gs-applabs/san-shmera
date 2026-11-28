@@ -34,6 +34,13 @@ public sealed class PersonalCalendarUiTests : IDisposable
         Assert.True(window.HandleShortcut(Keys.Control|Keys.D3));
         var page = Assert.Single(All(window).OfType<PersonalCalendarPage>());
         Assert.False(File.Exists(personal));
+        Assert.False(UiSettings.Load(settings).PersonalStartupReminder);
+        var startup=All(page).OfType<CheckBox>().Single(x=>x.Text=="Reminder summary on launch");
+        startup.Checked=true;
+        Assert.True(UiSettings.Load(settings).PersonalStartupReminder);
+        startup.Checked=false;
+        Assert.False(UiSettings.Load(settings).PersonalStartupReminder);
+        Assert.False(File.Exists(personal));
         var title = All(page).OfType<TextBox>().Single(x=>x.AccessibleName=="Title");
         var date = All(page).OfType<TextBox>().Single(x=>x.AccessibleName=="Date DD/MM/YYYY");
         title.Text = "Private birthday";

@@ -29,6 +29,11 @@ public sealed class HistoryCatalogTests
         Assert.True(regional.Total>0);
         Assert.All(regional.Entries,x=>Assert.Equal(region,x.Region));
         Assert.Equal(first.Entries[0],catalog.FindById(first.Entries[0].Key));
+        foreach(var entry in first.Entries.Concat(second.Entries))
+        {
+            Assert.True(HistoryLink.TryParse(HistoryLink.Create(entry.Key),out var id));
+            Assert.Equal(entry,catalog.FindById(id));
+        }
         Assert.Null(catalog.FindById("absent"));
         var births=catalog.Search("","birth",null,null,false,0,500);
         Assert.True(births.Total>0);

@@ -11,6 +11,8 @@ public sealed class UiSettings
     /// <summary>Opt-in decorative animations; static graphics keep the same colours and artwork.</summary>
     public bool Animations { get; set; }
     public string AstronomySite { get; set; } = "auto";
+    /// <summary>Opt-in local reminder count once per window launch; no background worker.</summary>
+    public bool PersonalStartupReminder { get; set; }
 
     /// <summary>The stand-alone app looks for a newer version in the official releases (at most once a day). The Opsis plugin never does: Opsis updates its plugins.</summary>
     public bool CheckForUpdates { get; set; } = true;

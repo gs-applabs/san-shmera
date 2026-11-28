@@ -119,6 +119,14 @@ public sealed class MainWindow : Form
             if (ActivePage == "astronomy") RebuildToolPage();
         }
     }
+    private string PersonalCalendarPath => _settingsPath is null
+        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Chronikologio","personal-calendar.json")
+        : _settingsPath+".personal.json";
+    private void SetPersonalStartupReminder(bool enabled)
+    {
+        _settings.PersonalStartupReminder=enabled;
+        _settings.Save(_settingsPath);
+    }
     private string EffectiveSite => _settings.AstronomySite == "auto" ? (Region == "cy" ? "nicosia" : "athens") : _settings.AstronomySite;
     public void OpenPage(string page)
     {
@@ -140,9 +148,7 @@ public sealed class MainWindow : Form
                 {
                     "calendar-tools" => new CalendarToolsPage(_date,Region),
                     "history-catalog" => new HistoryCatalogPage(_store),
-                    "personal-calendar" => new PersonalCalendarPage(_settingsPath is null
-                        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Chronikologio","personal-calendar.json")
-                        : _settingsPath+".personal.json",_date),
+                    "personal-calendar" => new PersonalCalendarPage(PersonalCalendarPath,_date,_settings.PersonalStartupReminder,SetPersonalStartupReminder),
                     _ => new AstronomyPage(_date,EffectiveSite)
                 };
                 _host.Controls.Add(_toolsPage); _toolsPage.BringToFront();
@@ -314,6 +320,28 @@ public sealed class MainWindow : Form
         _toolsPage?.Restyle();
         if (IsHandleCreated) TitleBar.Apply(Handle, p.IsDark);
         Invalidate(true);
+    }
+
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        if(!_settings.PersonalStartupReminder)return;
+        BeginInvoke((Action)(() =>
+        {
+            if(IsDisposed||Disposing||!_settings.PersonalStartupReminder)return;
+            try
+            {
+                var today=DateOnly.FromDateTime(DateTime.Today);
+                var due=PersonalCalendar.DueWithin(new PersonalCalendar(PersonalCalendarPath).Load().Events,today,6);
+                if(due.Count==0)return;
+                var count=due.Count(x=>x.Date==today);
+                if(MessageBox.Show(this,T("Σήμερα: ","Today: ")+count+T(" · Επόμενες 7 ημέρες (μαζί με σήμερα): "," · Next 7 days (including today): ")+due.Count+"\n\n"+T("Άνοιγμα προσωπικού ημερολογίου;","Open personal calendar?"),
+                    T("Προσωπικές υπενθυμίσεις","Personal reminders"),MessageBoxButtons.YesNo,MessageBoxIcon.Information)==DialogResult.Yes)
+                    OpenPage("personal-calendar");
+            }
+            catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or InvalidDataException)
+            { /* The personal workspace reports read errors without overwriting its data. */ }
+        }));
     }
 
     protected override void OnHandleCreated(EventArgs e)

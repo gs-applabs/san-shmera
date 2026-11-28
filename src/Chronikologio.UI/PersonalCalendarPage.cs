@@ -31,10 +31,10 @@ public sealed class PersonalCalendarPage : TimeToolsPage
         _ => T("Άλλο","Other")
     };
 
-    public PersonalCalendarPage(string path,DateOnly selected) : base(
+    public PersonalCalendarPage(string path,DateOnly selected,bool startupReminder=false,Action<bool>? setStartupReminder=null) : base(
         T("Προσωπικό ημερολόγιο","Personal calendar"),
-        T("Ιδιωτικές καταχωρίσεις μόνο στον υπολογιστή. Οι υπενθυμίσεις εμφανίζονται εδώ, χωρίς ειδοποιήσεις στο παρασκήνιο.",
-          "Private entries on this computer only. Reminders appear here, with no background notifications."))
+        T("Ιδιωτικές καταχωρίσεις μόνο στον υπολογιστή. Οι υπενθυμίσεις εμφανίζονται εδώ ή προαιρετικά στην εκκίνηση, χωρίς υπηρεσία παρασκηνίου.",
+          "Private entries on this computer only. Reminders appear here or optionally at launch, with no background service."))
     {
         _store = new PersonalCalendar(path);
         _initialDate = selected;
@@ -57,6 +57,12 @@ public sealed class PersonalCalendarPage : TimeToolsPage
         _weekOnly.Text = T("Επόμενες 7 ημέρες (μαζί με σήμερα)","Next 7 days (including today)");
         Add(Row(_upcoming,_weekOnly),35);
         Add(_due,38);
+        if(setStartupReminder is not null)
+        {
+            var startup=new CheckBox{AutoSize=true,Checked=startupReminder,Text=T("Σύνοψη υπενθυμίσεων κατά την εκκίνηση","Reminder summary on launch")};
+            startup.CheckedChanged+=(_,_)=>setStartupReminder(startup.Checked);
+            Add(Row(startup),35);
+        }
         _list = Table((T("Ημερομηνία","Date"),115),(T("Τίτλος","Title"),245),(T("Κατηγορία","Category"),125),(T("Ετήσια","Yearly"),75));
         Add(_list,260);
         _export = Button(T("Εξαγωγή επόμενων σε ICS","Export upcoming to ICS"),225);
