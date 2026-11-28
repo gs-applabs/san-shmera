@@ -3,13 +3,47 @@
 import argparse
 import hashlib
 import json
+import os
 import stat
-import shutil
 from pathlib import Path
 import tempfile
 import zipfile
 
 EXTENSIONS = {".webp", ".png", ".jpg", ".jpeg"}
+
+def check_unlinked(path):
+    info = path.lstat()
+    if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400):
+        raise SystemExit(f"Refusing linked/reparse entry: {path}")
+    return info
+
+def inventory(root):
+    # Check directory entries before os.walk descends into them.
+    files, directories = [], []
+    def fail(error):
+        raise error
+    for current, dirs, names in os.walk(root, topdown=True, followlinks=False, onerror=fail):
+        directory = Path(current)
+        check_unlinked(directory)
+        for name in sorted(dirs):
+            child = directory / name
+            if not stat.S_ISDIR(check_unlinked(child).st_mode):
+                raise SystemExit(f"Non-directory: {child}")
+            directories.append(child)
+        for name in sorted(names):
+            child = directory / name
+            if not stat.S_ISREG(check_unlinked(child).st_mode):
+                raise SystemExit(f"Non-regular file: {child}")
+            files.append(child)
+    return files, directories
+
+def read_bounded(path, limit):
+    check_unlinked(path)
+    with path.open("rb") as stream:
+        data = stream.read(limit + 1)
+    if len(data) > limit:
+        raise RuntimeError(f"File exceeds supported size: {path}")
+    return data
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -17,22 +51,21 @@ def main():
     parser.add_argument("--cleanup-manifest", type=Path, help="List exact original paths and SHA-256 for safe upgrades")
     parser.add_argument("--remove-loose", action="store_true", help="Only for a disposable publish output")
     args = parser.parse_args()
-    root = args.data.resolve()
+    root = Path(os.path.abspath(args.data))
+    if not root.is_dir():
+        raise SystemExit("Data folder missing")
+    for component in [*reversed(root.parents), root]:
+        check_unlinked(component)
+    root = root.resolve()
     images = root / "images"
     source = (Path(__file__).resolve().parents[1] / "data").resolve()
     if args.remove_loose and (root == source or root.is_relative_to(source) or source.is_relative_to(root)):
         raise SystemExit("Refusing to remove files in or around the source repository data")
-    if not root.is_dir():
-        raise SystemExit("Data folder missing")
-    # Never follow symbolic links or Windows reparse points, even when they point inside the staging area.
-    for path in [root, *root.rglob("*")]:
-        info = path.lstat()
-        if path.is_symlink() or getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400):
-            raise SystemExit(f"Refusing linked/reparse entry: {path}")
-    files = sorted(p for p in images.rglob("*") if p.is_file() and p.suffix.lower() in EXTENSIONS)
+    all_files, directories = inventory(root)
+    files = sorted(p for p in all_files if p.is_relative_to(images) and p.suffix.lower() in EXTENSIONS)
     if not files:
         raise SystemExit("No source images found")
-    texts = sorted(p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in {".json", ".tsv"})
+    texts = sorted(p for p in all_files if p.suffix.lower() in {".json", ".tsv"})
     if not texts:
         raise SystemExit("No source texts found")
     if len(texts) > 10000 or sum(p.stat().st_size for p in texts) > 128 * 1024 * 1024 or any(p.stat().st_size > 32 * 1024 * 1024 for p in texts):
@@ -45,7 +78,7 @@ def main():
         idx = Path(work) / "media.index"
         with pack.open("wb") as stream:
             for path in files:
-                data = path.read_bytes()
+                data = read_bounded(path, 32 * 1024 * 1024)
                 if not 0 < len(data) <= 32 * 1024 * 1024:
                     raise RuntimeError(f"Image exceeds supported size: {path}")
                 original_bytes += len(data)
@@ -71,13 +104,13 @@ def main():
                 info.compress_type = zipfile.ZIP_DEFLATED
                 info.external_attr = 0o100644 << 16
                 info.create_system = 3
-                with path.open("rb") as src, z.open(info, "w") as dst:
-                    shutil.copyfileobj(src, dst, length=128 * 1024)
+                # Explicit level is needed with a caller-provided ZipInfo.
+                z.writestr(info, read_bounded(path, 32 * 1024 * 1024), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
         with zipfile.ZipFile(text_pack) as z:
             if len(z.infolist()) != len(texts):
                 raise RuntimeError("Missing or repeated text path")
             for path in texts:
-                if hashlib.sha256(z.read(path.relative_to(root).as_posix())).digest() != hashlib.sha256(path.read_bytes()).digest():
+                if hashlib.sha256(z.read(path.relative_to(root).as_posix())).digest() != hashlib.sha256(read_bounded(path, 32 * 1024 * 1024)).digest():
                     raise RuntimeError(f"Text integrity check failed: {path}")
         pack.replace(root / "media.pack")
         idx.replace(root / "media.index")
@@ -96,7 +129,7 @@ def main():
     if args.remove_loose:
         for path in files + texts:
             path.unlink()
-        for directory in sorted((p for p in images.rglob("*") if p.is_dir()), key=lambda p: len(p.parts), reverse=True):
+        for directory in sorted((p for p in directories if p != images and p.is_relative_to(images)), key=lambda p: len(p.parts), reverse=True):
             if not any(directory.iterdir()):
                 directory.rmdir()
     print(json.dumps({"originalImages": len(files), "uniqueImages": len(by_hash), "originalBytes": original_bytes,
