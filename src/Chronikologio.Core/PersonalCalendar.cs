@@ -97,8 +97,12 @@ public sealed class PersonalCalendar
     /// <summary>Explicit export, without notes; refuses to overwrite any existing file.</summary>
     public void WriteUpcomingIcs(string destination,DateOnly reference,DateTime utcNow)
     {
+        destination=Path.GetFullPath(destination);
+        if (string.Equals(destination,_path,StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(destination,_path+".lock",StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Choose a separate export file.");
         var snapshot=Load();
-        WriteNewFile(Path.GetFullPath(destination),Encoding.UTF8.GetBytes(ExportIcs(Upcoming(snapshot.Events,reference),utcNow)));
+        WriteNewFile(destination,Encoding.UTF8.GetBytes(ExportIcs(Upcoming(snapshot.Events,reference),utcNow)));
     }
 
     private static void WriteNewFile(string destination,byte[] data)
